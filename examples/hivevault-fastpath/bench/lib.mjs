@@ -100,6 +100,9 @@ export function parseTool(m) {
   try { return JSON.parse(m.result.content?.[0]?.text); } catch { return m.result.content?.[0]?.text; }
 }
 
+/** The body of a note PUT. WAIT (the bench commands set WAIT=durable) becomes the write's wait; unset, the server default applies. */
+export const putBody = (body, wait = process.env.WAIT) => (wait ? { body, wait } : { body });
+
 export function git(root, ...args) { return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }); }
 
 /** Does the vault's HEAD commit hold every path in `want`, with the bytes that are on disk? */

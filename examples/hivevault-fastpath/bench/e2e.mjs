@@ -1,7 +1,7 @@
 import fs from 'node:fs'; import http from 'node:http'; import { spawn, execSync } from 'node:child_process';
 import * as L from './lib.mjs';
 const N=+process.argv[2], PORT=+process.argv[3]; const W=(process.env.BENCH_DIR||"/tmp/hvbench")+`/n${N}`; fs.rmSync(W,{recursive:true,force:true}); fs.mkdirSync(W,{recursive:true});
-const out={N}; const save=()=>fs.writeFileSync(`${W}.json`,JSON.stringify(out,null,1));
+const out={N,wait:process.env.WAIT||null}; const save=()=>fs.writeFileSync(`${W}.json`,JSON.stringify(out,null,1));
 const pid=(port)=>{try{return +execSync(`ss -ltnpH 'sport = :${port}' | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2`).toString().trim()}catch{return 0}};
 const rss=(p)=>{try{return +(+fs.readFileSync(`/proc/${p}/status`,'utf8').match(/VmRSS:\s+(\d+)/)[1]/1024).toFixed(0)}catch{return null}};
 const st=(a)=>({n:a.length,p50:L.pct(a,.5),p95:L.pct(a,.95),max:+Math.max(...a).toFixed(1)});
@@ -15,7 +15,7 @@ out.loopMs=+(performance.now()-t).toFixed(0); out.loopMsPerNote=+(out.loopMs/N).
 Object.assign(out,await L.flushToCommit(v,Array.from({length:N},(_,j)=>`work/p/n${j}.md`)));
 out.rssLoaded=rss(pid(PORT)); save(); console.error('loaded',out.loopMs,out.flushMs,out.flushAnswerMs,out.flushStatus,out.flushErr||'');
 for(const Wn of [1,8,32]){const lat=[];const per=Wn===1?40:Math.ceil(640/Wn);const s=performance.now();let errs=0;
- await Promise.all(Array.from({length:Wn},async(_,w)=>{for(let k=0;k<per;k++){const r=await L.http(v,'PUT',`/v1/notes/work/c/w${Wn}-${w}-${k}.md`,{body:{body:body(N+w*1000+k)}});if(r.status>=300)errs++;lat.push(r.ms)}}));
+ await Promise.all(Array.from({length:Wn},async(_,w)=>{for(let k=0;k<per;k++){const r=await L.http(v,'PUT',`/v1/notes/work/c/w${Wn}-${w}-${k}.md`,{body:L.putBody(body(N+w*1000+k))});if(r.status>=300)errs++;lat.push(r.ms)}}));
  const el=(performance.now()-s)/1000; out[`writers${Wn}`]={...st(lat),savesPerSec:+(lat.length/el).toFixed(0),errs}; save(); console.error(Wn,JSON.stringify(out[`writers${Wn}`]));}
 let bytes={req:0,res:0}; const PX=PORT+2;
 const px=http.createServer((rq,rs)=>{const up=http.request({host:'127.0.0.1',port:PORT,path:rq.url,method:rq.method,headers:rq.headers},(u)=>{rs.writeHead(u.statusCode,u.headers);u.on('data',d=>{bytes.res+=d.length;rs.write(d)});u.on('end',()=>rs.end())});rq.on('data',d=>{bytes.req+=d.length;up.write(d)});rq.on('end',()=>up.end())}).listen(PX);

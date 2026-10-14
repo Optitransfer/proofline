@@ -84,3 +84,13 @@ test('every example task allows CHANGELOG.md and docs/MAP.md, and nothing else i
     for (const a of t.criteria.filter((x) => x.verifier.type === 'scope')) assert.deepEqual(a.verifier.allow, want, `${a.id} allow`);
   }
 });
+
+test('the bench writers send WAIT as the wait of each PUT, and the output records it', () => {
+  const lib = path.join(EX, 'bench/lib.mjs');
+  const body = (env) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `import(${JSON.stringify(lib)}).then((L) => console.log(JSON.stringify(L.putBody('x'))))`], { encoding: 'utf8', env: { ...process.env, ...env } }));
+  assert.deepEqual(body({ WAIT: 'durable' }), { body: 'x', wait: 'durable' });
+  assert.deepEqual(body({ WAIT: '' }), { body: 'x' });
+  const src = fs.readFileSync(path.join(EX, 'bench/e2e.mjs'), 'utf8');
+  assert.match(src, /L\.http\(v,'PUT',`\/v1\/notes\/work\/c\/w\$\{Wn\}-\$\{w\}-\$\{k\}\.md`,\{body:L\.putBody\(/);
+  assert.match(src, /wait:process\.env\.WAIT\|\|null/);
+});
