@@ -25,13 +25,37 @@ export function headInfo(root) {
   return { head, tree: sha256(dirty) };
 }
 
-export function verifyTask(root, taskId, { claims, only, skipTypes = [] } = {}) {
+/** `Proofline-Base: <rev>` in the trailer block (last paragraph) of the HEAD commit message, or null. */
+export function baseTrailer(root) {
+  const msg = git(['log', '-1', '--format=%B', 'HEAD'], root);
+  if (!msg.ok) return null;
+  const last = msg.out.trim().split(/\n[ \t]*\n/).pop() || '';
+  const m = [...last.matchAll(/^Proofline-Base:[ \t]*(\S+)[ \t]*$/gim)].pop();
+  return m ? m[1] : null;
+}
+
+/**
+ * Where the base revision comes from, first match wins: --base, the task's own `base` in the contract,
+ * the base pinned when the task started (`proofline next`), a Proofline-Base trailer on HEAD, the default.
+ */
+export function baseFor(root, c, t, explicit) {
+  if (explicit) return { ref: explicit, source: '--base' };
+  if (t.base) return { ref: t.base, source: 'contract' };
+  const started = readLog(root).find((e) => e.type === 'task_started' && e.data.task === t.id);
+  if (started?.data.base) return { ref: started.data.base, source: 'pinned at start' };
+  const tr = baseTrailer(root);
+  if (tr) return { ref: tr, source: 'commit trailer' };
+  return { ref: c.defaults?.base || 'origin/main', source: 'default' };
+}
+
+const forbiddenOn = (f) => ['test_skip_only', 'timeout_raise', 'assertion_removal', 'test_file_deletion', 'no_verify'].some((k) => f[k] !== false) || (f.bypass_env || []).length > 0 || (f.protected_values || []).length > 0;
+
+export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: explicitBase } = {}) {
   const c = C.load(root);
   const t = taskById(c, taskId);
   const errs = C.validate(c);
-  const started = readLog(root).find((e) => e.type === 'task_started' && e.data.task === t.id);
   // Base is pinned when the task starts, so pushing the work does not move the goalposts.
-  const baseRef = t.base || started?.data.base || c.defaults?.base || 'origin/main';
+  const { ref: baseRef, source: baseSource } = baseFor(root, c, t, explicitBase);
   const base = resolveBase(root, baseRef);
   const ctx = { root, contract: c, task: t, base, changed: base ? changedFiles(root, base) : new Map(), measured: {}, baseline: c.baseline?.metrics, tolerancePct: c.defaults?.regression_tolerance_pct, flakyReruns: c.defaults?.flaky_reruns ?? 1 };
   const results = [];
@@ -42,7 +66,8 @@ export function verifyTask(root, taskId, { claims, only, skipTypes = [] } = {}) 
     try { r = verifiers[a.verifier.type](a.verifier, ctx); } catch (e) { r = { status: 'error', detail: `verifier crashed: ${e.message}` }; }
     results.push({ id: a.id, statement: a.statement, mandatory: a.mandatory !== false, type: a.verifier.type, ...r });
   }
-  const forbidden = scanForbidden(root, base, { ...C.DEFAULT_FORBIDDEN, ...(c.forbidden || {}) });
+  const rules = { ...C.DEFAULT_FORBIDDEN, ...(c.forbidden || {}) };
+  const forbidden = scanForbidden(root, base, rules);
   let baseContract = null;
   if (base) { const s = git(['show', `${base}:proofline.json`], root); if (s.ok) try { baseContract = JSON.parse(s.out); } catch {} }
   const weak = C.weakenings(baseContract, c);
@@ -52,7 +77,14 @@ export function verifyTask(root, taskId, { claims, only, skipTypes = [] } = {}) 
 
   const blocked = [], failing = [];
   if (errs.length) blocked.push(...errs.map((e) => `contract invalid: ${e}`));
-  if (!base) blocked.push(`base revision "${baseRef}" not found`);
+  if (!base) blocked.push(`base revision "${baseRef}" (${baseSource}) not found`);
+  const head = git(['rev-parse', '--verify', '--quiet', 'HEAD'], root).out;
+  if (base && head && baseSource === 'commit trailer' && (base === head || !git(['merge-base', '--is-ancestor', base, head], root).ok))
+    blocked.push(`base: the Proofline-Base trailer on HEAD names ${baseRef}, which is not an ancestor of HEAD ${head.slice(0, 8)}`);
+  // With no pinned or passed base, a default base at (or ahead of) HEAD gives an empty diff: every diff check would pass on nothing.
+  const diffBased = t.criteria.some((a) => ['scope', 'test_red_green'].includes(a.verifier?.type)) || forbiddenOn(rules);
+  if (base && head && baseSource === 'default' && diffBased && git(['merge-base', '--is-ancestor', head, base], root).ok)
+    blocked.push(`base: no base is pinned for ${t.id}, and the default base ${baseRef} is ${base === head ? 'HEAD' : 'ahead of HEAD'} (${base.slice(0, 8)}), so the diff does not hold this work and the forbidden scan, scope, red-green and weakening checks would see nothing`);
   if (!chain.ok) blocked.push(`evidence log tampered at entry ${chain.at}: ${chain.reason}`);
   for (const w of weak) blocked.push(`contract weakened vs base (needs owner approval): ${w}`);
   for (const r of results) {
@@ -73,16 +105,18 @@ export function verifyTask(root, taskId, { claims, only, skipTypes = [] } = {}) 
     if (claimResults.some((x) => !x.ok) && decision === 'PASS') decision = 'FAIL';
   }
   const hi = headInfo(root);
-  return { task: t.id, title: t.title, phase: t.phase, decision, base, base_ref: baseRef, ...hi, contract_hash: C.contractHash(c), results, forbidden, weakenings: weak, contract_change: contractChange, blocked, failing, measured: ctx.measured, claims: claimResults, changed: [...ctx.changed.keys()], ts: new Date().toISOString() };
+  return { task: t.id, title: t.title, phase: t.phase, decision, base, base_ref: baseRef, base_source: baseSource, ...hi, contract_hash: C.contractHash(c), results, forbidden, weakenings: weak, contract_change: contractChange, blocked, failing, measured: ctx.measured, claims: claimResults, changed: [...ctx.changed.keys()], ts: new Date().toISOString() };
 }
 
 /** Corrective prompt tied to each failed criterion. */
 export function steer(v, c) {
   const t = taskById(c, v.task);
   if (v.decision === 'PASS') return `${v.task}: PASS on ${v.head?.slice(0, 8)}. Commit, push to ${c.defaults?.branch || 'main'}, then report:\n${v.task} | done | <hash> | <tests> | ${Object.entries(v.measured).map(([k, x]) => `${k}=${x}`).join(', ') || '-'} | -\nThen call task_next.`;
-  const L = [`PROOFLINE CORRECTIVE INSTRUCTION — ${v.task} (${t.title}) — gate ${v.decision}`, `Revision ${v.head?.slice(0, 8)} vs base ${v.base?.slice(0, 8) || v.base_ref}. Do NOT report this task as done. Fix in this order:`, ''];
+  const L = [`PROOFLINE CORRECTIVE INSTRUCTION for ${v.task} (${t.title}): gate ${v.decision}`, `Revision ${v.head?.slice(0, 8)} vs base ${v.base?.slice(0, 8) || v.base_ref} (${v.base_source}). Do NOT report this task as done. Fix in this order:`, ''];
   let n = 1;
-  for (const b of v.blocked) L.push(`${n++}. BLOCKED: ${b}\n   Next step: resolve the blocker (restore the contract, commit the missing rig/tool, or ask the owner). Do not work around it.`);
+  for (const b of v.blocked) L.push(`${n++}. BLOCKED: ${b}\n   Next step: ${b.startsWith('base: ')
+    ? `gate against the revision the task started from: pass --base <rev> (for one commit, its parent), or start the task with \`proofline next\`, which pins the base. Do not pick a base that hides part of the work.`
+    : 'resolve the blocker (restore the contract, commit the missing rig/tool, or ask the owner). Do not work around it.'}`);
   for (const r of v.results.filter((x) => x.mandatory && x.status !== 'pass' && x.status !== 'error')) {
     const a = t.criteria.find((x) => x.id === r.id);
     const how = {
@@ -107,7 +141,7 @@ export function steer(v, c) {
 
 function reportMd(v, c, prompt) {
   const row = (r) => `| ${r.id} | ${r.type} | ${r.mandatory ? 'yes' : 'no'} | ${r.status.toUpperCase()} | ${r.detail.split('\n')[0].replace(/\|/g, '\\|')} |`;
-  return [`# Proofline gate: ${v.task} — **${v.decision}**`, '', `- Task: ${v.title} (phase ${v.phase})`, `- Revision: ${v.head} (tree ${v.tree.slice(0, 12)})`, `- Base: ${v.base_ref} = ${v.base}`, `- Contract hash: ${v.contract_hash}`, `- Time: ${v.ts}`, '',
+  return [`# Proofline gate: ${v.task} is **${v.decision}**`, '', `- Task: ${v.title} (phase ${v.phase})`, `- Revision: ${v.head} (tree ${v.tree.slice(0, 12)})`, `- Base: ${v.base_ref} = ${v.base} (${v.base_source})`, `- Contract hash: ${v.contract_hash}`, `- Time: ${v.ts}`, '',
     '## Acceptance criteria', '', '| ID | Verifier | Mandatory | Result | Evidence |', '|---|---|---|---|---|', ...v.results.map(row), '',
     '## Measured', '', ...(Object.keys(v.measured).length ? Object.entries(v.measured).map(([k, x]) => `- ${k}: ${x}`) : ['- none']), '',
     '## Forbidden actions', '', ...(v.forbidden.length ? v.forbidden.map((f) => `- ${f.rule} in ${f.file}: \`${f.line}\` (${f.why})`) : ['- none detected']),
@@ -132,7 +166,7 @@ export function gate(root, taskId, opts = {}) {
   fs.writeFileSync(path.join(dir, `${taskId}-${stamp}.md`), reportMd(v, c, prompt));
   writeJson(path.join(dir, `${taskId}-latest.json`), json);
   fs.writeFileSync(path.join(dir, `${taskId}-latest.md`), reportMd(v, c, prompt));
-  const e = record(root, 'gate', { task: taskId, decision: v.decision, head: v.head, tree: v.tree, contract_hash: v.contract_hash, failing: v.failing, blocked: v.blocked, measured: v.measured });
+  const e = record(root, 'gate', { task: taskId, decision: v.decision, head: v.head, tree: v.tree, base: v.base, base_source: v.base_source, contract_hash: v.contract_hash, failing: v.failing, blocked: v.blocked, measured: v.measured });
   return { ...json, evidence_seq: e.seq, report: path.join(dir, `${taskId}-latest.md`) };
 }
 

@@ -58,7 +58,11 @@ export function taskNext(root) {
   if (n.task && n.status === 'not_started') { const c = C.load(root);
     const base = resolveBase(root, c.defaults?.base || 'origin/main') || git(['rev-parse', 'HEAD'], root).out;
     record(root, 'task_started', { task: n.task, base }); n.status = 'in_progress'; }
-  if (n.task) fs.writeFileSync(path.join(root, '.proofline', 'active'), n.task + '\n');
+  if (n.task) {
+    fs.writeFileSync(path.join(root, '.proofline', 'active'), n.task + '\n');
+    n.base = readLog(root).find((e) => e.type === 'task_started' && e.data.task === n.task)?.data.base;
+    if (n.base) n.brief += `\n\n## Base\nPinned at start: ${n.base}. The pin lives in the local .proofline/ log; in another clone, gate with \`--base ${n.base}\`, or end the task commit message with the trailer \`Proofline-Base: ${n.base}\`.`;
+  }
   return n;
 }
 

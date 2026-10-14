@@ -26,6 +26,8 @@
 | Agent claims a file changed but diff does not contain it | Unsupported-claim finding |
 | Check output contains a secret-shaped value | Redact before persistence; test redaction metadata |
 | Adapter drops an enforcement-critical event | Enforcement cannot silently pass |
+| Gate in a fresh clone with no pinned base, where the default base is HEAD | `BLOCKED` with a corrective naming `--base`; never a pass on an empty diff |
+| Same gate with `--base <parent>` and a change outside the task's scope | Scope-drift finding |
 | Commit adds or amends `proofline.json` with the default deny-list | No forbidden finding in the contract itself; the change is judged by the weakening check |
 
 ## Conformance fixture format

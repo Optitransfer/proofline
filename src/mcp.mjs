@@ -2,12 +2,13 @@
 import readline from 'node:readline';
 import * as P from './index.mjs';
 
+const BASE = { type: 'string', description: 'The revision the task started from. Needed in a fresh clone unless task_next pinned it or HEAD carries a Proofline-Base: trailer.' };
 const TOOLS = [
   { name: 'contract_create', description: 'Add a task contract (id, title, phase, depends_on, scope, criteria with deterministic verifiers). Returns validity problems; a task without verifiers cannot pass.', inputSchema: { type: 'object', properties: { task: { type: 'object' } }, required: ['task'] } },
   { name: 'task_next', description: 'Return the single next task (phase- and dependency-gated) with its full brief. Call this before starting any work.', inputSchema: { type: 'object', properties: {} } },
   { name: 'evidence_record', description: 'Record agent-side evidence (notes, commands you ran). Stored hash-chained, but never used to pass a gate: verify re-runs everything itself.', inputSchema: { type: 'object', properties: { type: { type: 'string' }, data: { type: 'object' } }, required: ['type'] } },
-  { name: 'verify', description: 'Independently run every acceptance check for a task, plus forbidden-action, scope, wiring and claim checks. Returns decision and a corrective prompt.', inputSchema: { type: 'object', properties: { task: { type: 'string' }, claims: { type: 'string', description: 'Your status line(s): TASK-ID | status | commit | tests | measured vs target | missing' } }, required: ['task'] } },
-  { name: 'gate', description: 'Release decision PASS/FAIL/BLOCKED with Markdown+JSON evidence report.', inputSchema: { type: 'object', properties: { task: { type: 'string' }, claims: { type: 'string' } }, required: ['task'] } },
+  { name: 'verify', description: 'Independently run every acceptance check for a task, plus forbidden-action, scope, wiring and claim checks. Returns decision and a corrective prompt.', inputSchema: { type: 'object', properties: { task: { type: 'string' }, claims: { type: 'string', description: 'Your status line(s): TASK-ID | status | commit | tests | measured vs target | missing' }, base: BASE }, required: ['task'] } },
+  { name: 'gate', description: 'Release decision PASS/FAIL/BLOCKED with Markdown+JSON evidence report.', inputSchema: { type: 'object', properties: { task: { type: 'string' }, claims: { type: 'string' }, base: BASE }, required: ['task'] } },
   { name: 'report', description: 'Latest gate report for a task (Markdown).', inputSchema: { type: 'object', properties: { task: { type: 'string' } }, required: ['task'] } },
   { name: 'status', description: 'Task and phase status, evidence-chain integrity.', inputSchema: { type: 'object', properties: {} } },
 ];
@@ -26,8 +27,8 @@ export function handle(root, msg) {
         case 'contract_create': r = P.contractCreate(root, a.task); break;
         case 'task_next': r = P.taskNext(root); break;
         case 'evidence_record': r = P.evidenceRecord(root, a.type, a.data || {}); break;
-        case 'verify': { const g = P.E.verifyTask(root, a.task, { claims: a.claims }); r = { ...g, corrective_prompt: P.E.steer(g, P.C.load(root)) }; break; }
-        case 'gate': r = P.E.gate(root, a.task, { claims: a.claims }); break;
+        case 'verify': { const g = P.E.verifyTask(root, a.task, { claims: a.claims, base: a.base }); r = { ...g, corrective_prompt: P.E.steer(g, P.C.load(root)) }; break; }
+        case 'gate': r = P.E.gate(root, a.task, { claims: a.claims, base: a.base }); break;
         case 'report': r = P.report(root, a.task); break;
         case 'status': r = P.status(root); break;
         default: return { jsonrpc: '2.0', id, error: { code: -32601, message: `unknown tool ${params.name}` } };

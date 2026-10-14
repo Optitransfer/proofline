@@ -23,8 +23,10 @@ const HELP = `proofline — independent V&V and delivery controller
   contract validate | show
   next                                  the single next task with its full brief (marks it active)
   brief <TASK>                          brief for a task
-  verify <TASK> [--claims "line"]      run every check independently; prints corrective prompt
-  gate <TASK>|--all [--claims ...]      release decision PASS/FAIL/BLOCKED + report (.proofline/reports)
+  verify <TASK> [--claims "line"] [--base <rev>]   run every check independently; prints corrective prompt
+  gate <TASK>|--all [--claims ...] [--base <rev>]  release decision PASS/FAIL/BLOCKED + report (.proofline/reports)
+                                        --base: the revision the task started from (needed in a fresh clone
+                                        unless \`next\` pinned it or HEAD carries a Proofline-Base: trailer)
   report <TASK>                         latest gate report
   status                                task + phase status, evidence chain
   evidence record <type> --data '{..}' | evidence verify | evidence log
@@ -54,10 +56,11 @@ try {
       const c = P.C.load(root);
       const ids = flags.all ? c.tasks.map((t) => t.id) : flags.ci ? (c.ci?.tasks || []) : [sub || P.activeTask(root)].filter(Boolean);
       if (!ids.length) { if (flags.ci) { const e = P.C.validate(c); print({ decision: e.length ? 'FAIL' : 'PASS', problems: e }, e.length ? e.join('\n') : 'contract valid; no ci.tasks'); process.exitCode = e.length ? 1 : 0; break; } throw new Error('which task? (proofline next)'); }
-      const outs = ids.map((id) => P.E.gate(root, id, { claims: claims(), skipTypes: flags['skip-pushed'] || flags.ci ? ['pushed'] : [] }));
+      if (flags.base === true) throw new Error('--base needs a revision');
+      const outs = ids.map((id) => P.E.gate(root, id, { claims: claims(), base: flags.base, skipTypes: flags['skip-pushed'] || flags.ci ? ['pushed'] : [] }));
       const worst = outs.some((o) => o.decision === 'BLOCKED') ? 'BLOCKED' : outs.some((o) => o.decision === 'FAIL') ? 'FAIL' : 'PASS';
       print(outs.length === 1 ? outs[0] : { decision: worst, gates: outs.map((o) => ({ task: o.task, decision: o.decision, failing: o.failing, blocked: o.blocked })) },
-        outs.map((o) => `== ${o.task}: ${o.decision}\n${o.results.map((r) => `  ${r.status.toUpperCase().padEnd(5)} ${r.id} [${r.type}] ${r.detail.split('\n')[0]}`).join('\n')}${o.forbidden.length ? '\n  forbidden: ' + o.forbidden.map((f) => `${f.rule}@${f.file}`).join(', ') : ''}\n  report: ${o.report}\n\n${o.corrective_prompt}`).join('\n\n') + `\n\nDECISION: ${worst}`);
+        outs.map((o) => `== ${o.task}: ${o.decision}\n  base: ${o.base_ref} = ${o.base?.slice(0, 8) || 'not found'} (${o.base_source})\n${o.results.map((r) => `  ${r.status.toUpperCase().padEnd(5)} ${r.id} [${r.type}] ${r.detail.split('\n')[0]}`).join('\n')}${o.forbidden.length ? '\n  forbidden: ' + o.forbidden.map((f) => `${f.rule}@${f.file}`).join(', ') : ''}\n  report: ${o.report}\n\n${o.corrective_prompt}`).join('\n\n') + `\n\nDECISION: ${worst}`);
       process.exitCode = code(worst);
       break;
     }

@@ -18,8 +18,9 @@ test('CLI exit codes: 0 PASS, 1 FAIL, 2 BLOCKED; --json output', () => {
   addTask(r, { id: 'B', title: 'b', criteria: [{ verifier: { type: 'command', cmd: 'false' } }] });
   addTask(r, { id: 'C', title: 'c', criteria: [{ verifier: { type: 'metric', cmd: 'node nope.mjs', key: 'x', op: '<', value: 1 } }] });
   const run = (...a) => spawnSync(process.execPath, [BIN, ...a, '--root', r], { encoding: 'utf8' });
-  assert.equal(run('gate', 'A').status, 0); assert.equal(run('gate', 'B').status, 1); assert.equal(run('gate', 'C').status, 2);
-  const j = JSON.parse(run('gate', 'B', '--json').stdout); assert.equal(j.decision, 'FAIL');
+  // The work is uncommitted on top of origin/main, so that is the base the tasks started from.
+  assert.equal(run('gate', 'A', '--base', 'origin/main').status, 0); assert.equal(run('gate', 'B', '--base', 'origin/main').status, 1); assert.equal(run('gate', 'C', '--base', 'origin/main').status, 2);
+  const j = JSON.parse(run('gate', 'B', '--json', '--base', 'origin/main').stdout); assert.equal(j.decision, 'FAIL');
   assert.equal(JSON.parse(run('next', '--json').stdout).task, 'B', 'A is verified, B is next');
 });
 

@@ -12,6 +12,7 @@ test('parses status lines and ignores other tables', () => {
 test('claimed numbers must match measured numbers', () => {
   const r = repo({ files: { 'bench/b.mjs': "console.log(JSON.stringify({ p50: 128 }))\n", 'test/t.test.mjs': "import test from 'node:test'; test('t', () => {});\n" } });
   addTask(r, { id: 'P', title: 'p', criteria: [{ verifier: { type: 'metric', cmd: 'node bench/b.mjs', key: 'p50', op: '<', value: 200 } }] });
+  P.taskNext(r);
   commitAll(r); sh(r, 'push', '-q', 'origin', 'main');
   const head = sh(r, 'rev-parse', '--short', 'HEAD');
   const g = P.E.verifyTask(r, 'P', { claims: `P | done | ${head} | t.test.mjs | p50 15 ms | -` });

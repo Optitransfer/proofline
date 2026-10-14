@@ -21,10 +21,23 @@ node /path/to/proofline/bin/proofline.mjs contract create --from task.json
 node /path/to/proofline/bin/proofline.mjs next          # the single next task + meticulous brief
 node /path/to/proofline/bin/proofline.mjs verify FP-01  # independent checks + corrective prompt
 node /path/to/proofline/bin/proofline.mjs gate FP-01 --claims "FP-01 | done | abc1234 | x.test.mjs | 4k.flushMs=1100 | -"
+node /path/to/proofline/bin/proofline.mjs gate FP-01 --base 1a2b3c4   # in a fresh clone: the revision the task started from
 node /path/to/proofline/bin/proofline.mjs status
 ```
 
 Exit codes: `0` PASS, `1` FAIL, `2` BLOCKED, `3` usage. Every command takes `--json`.
+
+## Base revision
+
+Every diff check (forbidden scan, `scope`, `test_red_green`, contract weakening) compares the base revision with the working tree. The base is taken from, first match wins:
+
+1. `--base <rev>` on `verify` or `gate` (MCP: `base`);
+2. the task's own `base` in the contract;
+3. the base pinned when the task started (`proofline next` records it in the local `.proofline/` log, and the brief prints it);
+4. a `Proofline-Base: <sha>` trailer on the HEAD commit (optional; it must name an ancestor of HEAD, or the gate is BLOCKED);
+5. `defaults.base` (`origin/main`).
+
+Every report says which one it used. A fresh clone has no log, and after the push the default base is HEAD, so the diff is empty and every diff check would pass on nothing. In that case the gate is BLOCKED, never PASS, and the corrective line asks for `--base <rev>` (for one commit, its parent) or `proofline next`. The CI workflow passes the previous tip of the pushed branch as `--base`.
 
 Demo (claimed done with no evidence → FAIL, then real work → PASS): `npm run demo`.
 
