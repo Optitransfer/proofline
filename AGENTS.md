@@ -9,7 +9,7 @@ Proofline decides whether your work is done. Your report is a claim; Proofline r
 3. Implement the root-cause fix **on the default path** (wired in, default config). Code that is built but unreachable does not count.
 4. `proofline verify <TASK>` (MCP: `verify`). Read the corrective instruction. Fix and repeat until `DECISION: PASS`.
    Max 3 corrective cycles; then report `blocked` with root cause (file:line), what you tried, what you need.
-5. Commit (one task per commit) and `git push origin main` with hooks on. The pre-push hook re-gates the task. You may end the commit message with the trailer `Proofline-Base: <sha>` (the base the brief names), so a fresh clone gates against the same base.
+5. Commit (one task per commit) and push to the contract's remote and branch (`defaults.remote`, default `origin`; `defaults.branch`, default `main`) with hooks on. The pre-push hook re-gates the task. You may end the commit message with the trailer `Proofline-Base: <sha>` (the base the brief names), so a fresh clone gates against the same base.
 6. `proofline gate <TASK> --claims "<report line>"` (MCP: `gate` with `claims`). Paste the report. In a clone where `next` did not run, add `--base <sha>` (MCP: `base`); without a base the gate is BLOCKED, never PASS.
 7. Back to step 1.
 

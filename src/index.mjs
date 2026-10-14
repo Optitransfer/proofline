@@ -91,7 +91,7 @@ export function contractCreate(root, spec) {
 export function taskNext(root, { owner } = {}) {
   const n = E.next(root, { owner });
   if (n.task && n.status === 'not_started') { const c = C.load(root);
-    const base = resolveBase(root, c.defaults?.base || 'origin/main') || git(['rev-parse', 'HEAD'], root).out;
+    const base = resolveBase(root, C.defaultBase(c)) || git(['rev-parse', 'HEAD'], root).out;
     record(root, 'task_started', { task: n.task, base, ...(owner ? { owner } : {}) }); n.status = 'in_progress'; }
   if (n.task) {
     fs.writeFileSync(path.join(root, '.proofline', 'active'), n.task + '\n');

@@ -36,7 +36,8 @@ export function baseTrailer(root) {
 
 /**
  * Where the base revision comes from, first match wins: --base, the task's own `base` in the contract,
- * the base pinned when the task started (`proofline next`), a Proofline-Base trailer on HEAD, the default.
+ * the base pinned when the task started (`proofline next`), a Proofline-Base trailer on HEAD, the default
+ * (defaults.base, else <defaults.remote>/<defaults.branch>).
  */
 export function baseFor(root, c, t, explicit) {
   if (explicit) return { ref: explicit, source: '--base' };
@@ -45,7 +46,7 @@ export function baseFor(root, c, t, explicit) {
   if (started?.data.base) return { ref: started.data.base, source: 'pinned at start' };
   const tr = baseTrailer(root);
   if (tr) return { ref: tr, source: 'commit trailer' };
-  return { ref: c.defaults?.base || 'origin/main', source: 'default' };
+  return { ref: C.defaultBase(c), source: 'default' };
 }
 
 const forbiddenOn = (f) => ['test_skip_only', 'timeout_raise', 'assertion_removal', 'test_file_deletion', 'no_verify'].some((k) => f[k] !== false) || (f.bypass_env || []).length > 0 || (f.protected_values || []).length > 0;
@@ -99,8 +100,8 @@ export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: e
   const claimResults = [];
   if (claims) {
     const res = { decision, failing: [...blocked, ...failing], measured: ctx.measured, metricLabels };
-    const needPush = t.criteria.some((a) => a.verifier.type === 'pushed');
-    for (const cl of parseClaims(claims, [t.id])) claimResults.push(checkClaim(root, cl, res, { requirePushed: needPush, branch: c.defaults?.branch }));
+    const push = t.criteria.find((a) => a.verifier.type === 'pushed')?.verifier;
+    for (const cl of parseClaims(claims, [t.id])) claimResults.push(checkClaim(root, cl, res, { requirePushed: !!push, remote: push?.remote || C.remoteOf(c), branch: push?.branch || C.branchOf(c) }));
     for (const cr of claimResults) if (!cr.ok) failing.push(...cr.issues.map((i) => `claim mismatch: ${i}`));
     if (claimResults.some((x) => !x.ok) && decision === 'PASS') decision = 'FAIL';
   }

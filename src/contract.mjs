@@ -69,6 +69,11 @@ const isName = (x) => typeof x === 'string' && x.trim() !== '';
 /** A task belongs to an owner's lane when it is theirs or has no owner. No owner given: every task. */
 export const inLane = (t, owner) => !owner || t.owner === undefined || t.owner === owner;
 
+/** The remote and branch the work is pushed to, and the default base: defaults.base, else <remote>/<branch>. */
+export const remoteOf = (c) => c.defaults?.remote || 'origin';
+export const branchOf = (c) => c.defaults?.branch || 'main';
+export const defaultBase = (c) => c.defaults?.base || `${remoteOf(c)}/${branchOf(c)}`;
+
 /** An --owner name must be in defaults.owners when the contract has that list. */
 export function checkOwner(c, owner) {
   if (owner === undefined) return;
@@ -81,6 +86,7 @@ export function checkOwner(c, owner) {
 export function validate(c) {
   const errs = [];
   if (c.schema !== SCHEMA) errs.push(`schema must be ${SCHEMA}`);
+  if (c.defaults?.remote !== undefined && !isName(c.defaults.remote)) errs.push('defaults.remote must be a remote name (a string)');
   const owners = c.defaults?.owners;
   if (owners !== undefined && !(Array.isArray(owners) && owners.every(isName))) errs.push('defaults.owners must be a list of names');
   const ids = new Set();

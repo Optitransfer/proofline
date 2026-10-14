@@ -43,7 +43,9 @@ Every diff check (forbidden scan, `scope`, `test_red_green`, contract weakening)
 2. the task's own `base` in the contract;
 3. the base pinned when the task started (`proofline next` records it in the local `.proofline/` log, and the brief prints it);
 4. a `Proofline-Base: <sha>` trailer on the HEAD commit (optional; it must name an ancestor of HEAD, or the gate is BLOCKED);
-5. `defaults.base` (`origin/main`).
+5. the default: `defaults.base`, else `<defaults.remote>/<defaults.branch>` (`origin/main` when neither is set).
+
+A repository whose remote is not called `origin` sets `defaults.remote` (for example `"github"`) and leaves `defaults.base` out; `pushed`, claim reconciliation and the default base then use that remote.
 
 Every report says which one it used. A fresh clone has no log, and after the push the default base is HEAD, so the diff is empty and every diff check would pass on nothing. In that case the gate is BLOCKED, never PASS, and the corrective line asks for `--base <rev>` (for one commit, its parent) or `proofline next`. The CI workflow passes the previous tip of the pushed branch as `--base`.
 
@@ -61,7 +63,7 @@ Demo (claimed done with no evidence → FAIL, then real work → PASS): `npm run
 | `wiring` | the symbol is **called** in a file reachable by static imports from the default entry (catches "built but not wired in") |
 | `scope` | every changed file matches the allowlist |
 | `docs` | generator leaves no diff in the given paths |
-| `pushed` | tree clean and HEAD == origin/main |
+| `pushed` | tree clean and HEAD == `<remote>/<branch>` (the criterion's `remote`/`branch`, else `defaults.remote`/`defaults.branch`, else `origin`/`main`) |
 | `file_exists` | path exists (e.g. the bench rig is committed) |
 
 Always on: forbidden-action scan of the diff (skip/only/todo, raised timeouts, net assertion loss, deleted tests, `--no-verify`, bypass env vars, lowered protected caps; `proofline.json` and `.proofline/` are left out, because the contract declares the deny-list and would match it), contract-weakening check vs the base revision (loosened thresholds, removed criteria, changed commands → BLOCKED), hash-chained evidence log integrity, claim reconciliation.

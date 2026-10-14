@@ -203,7 +203,7 @@ export const verifiers = {
 
   pushed(v, ctx) {
     const branch = v.branch || ctx.contract.defaults?.branch || 'main';
-    const remote = v.remote || 'origin';
+    const remote = v.remote || ctx.contract.defaults?.remote || 'origin';
     const dirty = git(['status', '--porcelain'], ctx.root).out.split('\n').filter((l) => l && !l.includes('.proofline/'));
     if (dirty.length) return { status: 'fail', detail: `working tree not clean (${dirty.length} paths); work held locally`, evidence: { dirty: dirty.slice(0, 20) } };
     const head = git(['rev-parse', 'HEAD'], ctx.root).out;
