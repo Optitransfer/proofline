@@ -89,7 +89,9 @@
       "description": "Copy the bench kit into bench/ and commit it, so every metric gate can be reproduced from a clean checkout (lesson: the rig lived only on one machine).",
       "scope": {
         "allow": [
-          "bench/**"
+          "bench/**",
+          "CHANGELOG.md",
+          "docs/MAP.md"
         ]
       },
       "criteria": [
@@ -149,7 +151,9 @@
           "server/src/**",
           "server/test/**",
           "docs/**",
-          "bench/**"
+          "bench/**",
+          "CHANGELOG.md",
+          "docs/MAP.md"
         ]
       },
       "criteria": [
@@ -221,7 +225,9 @@
               "server/src/**",
               "server/test/**",
               "docs/**",
-              "bench/**"
+              "bench/**",
+              "CHANGELOG.md",
+              "docs/MAP.md"
             ]
           }
         },
@@ -284,7 +290,9 @@
           "server/src/**",
           "server/test/**",
           "docs/**",
-          "bench/**"
+          "bench/**",
+          "CHANGELOG.md",
+          "docs/MAP.md"
         ]
       },
       "criteria": [
@@ -320,7 +328,9 @@
               "server/src/**",
               "server/test/**",
               "docs/**",
-              "bench/**"
+              "bench/**",
+              "CHANGELOG.md",
+              "docs/MAP.md"
             ]
           }
         },
@@ -353,7 +363,9 @@
           "server/src/**",
           "server/test/**",
           "docs/**",
-          "bench/**"
+          "bench/**",
+          "CHANGELOG.md",
+          "docs/MAP.md"
         ]
       },
       "criteria": [
@@ -389,7 +401,9 @@
               "server/src/**",
               "server/test/**",
               "docs/**",
-              "bench/**"
+              "bench/**",
+              "CHANGELOG.md",
+              "docs/MAP.md"
             ]
           }
         },
@@ -423,7 +437,9 @@
           "server/src/**",
           "server/test/**",
           "docs/**",
-          "bench/**"
+          "bench/**",
+          "CHANGELOG.md",
+          "docs/MAP.md"
         ]
       },
       "criteria": [
@@ -468,7 +484,9 @@
               "server/src/**",
               "server/test/**",
               "docs/**",
-              "bench/**"
+              "bench/**",
+              "CHANGELOG.md",
+              "docs/MAP.md"
             ]
           }
         },
@@ -501,7 +519,9 @@
           "server/src/**",
           "server/test/**",
           "docs/**",
-          "bench/**"
+          "bench/**",
+          "CHANGELOG.md",
+          "docs/MAP.md"
         ]
       },
       "criteria": [
@@ -548,7 +568,9 @@
               "server/src/**",
               "server/test/**",
               "docs/**",
-              "bench/**"
+              "bench/**",
+              "CHANGELOG.md",
+              "docs/MAP.md"
             ]
           }
         },
@@ -585,7 +607,9 @@
           "server/src/**",
           "server/test/**",
           "docs/**",
-          "bench/**"
+          "bench/**",
+          "CHANGELOG.md",
+          "docs/MAP.md"
         ]
       },
       "criteria": [
@@ -631,7 +655,9 @@
               "server/src/**",
               "server/test/**",
               "docs/**",
-              "bench/**"
+              "bench/**",
+              "CHANGELOG.md",
+              "docs/MAP.md"
             ]
           }
         },
@@ -664,7 +690,9 @@
           "server/src/**",
           "server/test/**",
           "docs/**",
-          "bench/**"
+          "bench/**",
+          "CHANGELOG.md",
+          "docs/MAP.md"
         ]
       },
       "criteria": [
@@ -821,7 +849,9 @@
               "server/src/**",
               "server/test/**",
               "docs/**",
-              "bench/**"
+              "bench/**",
+              "CHANGELOG.md",
+              "docs/MAP.md"
             ]
           }
         },
@@ -852,7 +882,9 @@
           "server/src/**",
           "server/test/**",
           "docs/**",
-          "bench/**"
+          "bench/**",
+          "CHANGELOG.md",
+          "docs/MAP.md"
         ]
       },
       "criteria": [
@@ -969,7 +1001,9 @@
               "server/src/**",
               "server/test/**",
               "docs/**",
-              "bench/**"
+              "bench/**",
+              "CHANGELOG.md",
+              "docs/MAP.md"
             ]
           }
         },
@@ -1000,7 +1034,9 @@
           "server/package.json",
           "package.json",
           "server/test/**",
-          "scripts/**"
+          "scripts/**",
+          "CHANGELOG.md",
+          "docs/MAP.md"
         ]
       },
       "criteria": [
@@ -1045,7 +1081,9 @@
               "server/package.json",
               "package.json",
               "server/test/**",
-              "scripts/**"
+              "scripts/**",
+              "CHANGELOG.md",
+              "docs/MAP.md"
             ]
           }
         },
@@ -1075,7 +1113,9 @@
       "description": "Restore the deleted restart and large-index crash tests at 10k scale (lesson: the cap silently deleted coverage).",
       "scope": {
         "allow": [
-          "server/test/**"
+          "server/test/**",
+          "CHANGELOG.md",
+          "docs/MAP.md"
         ]
       },
       "criteria": [
@@ -1116,7 +1156,9 @@
           "verifier": {
             "type": "scope",
             "allow": [
-              "server/test/**"
+              "server/test/**",
+              "CHANGELOG.md",
+              "docs/MAP.md"
             ]
           }
         },

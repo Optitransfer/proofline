@@ -6,6 +6,7 @@
 - FP-01..FP-07 each need a red-green test, the full parallel suite (≥ 1,088 tests, none hung), scope, and push; perf tasks gate on `bench/e2e.mjs` JSON: 4k `flushMs` ≤ 1500 / < 2000 (time until the commit holds the batch, not the HTTP answer, which is `flushAnswerMs`; FP-01 also needs `flushCommitted` == 1 at 4k and 10k), `writers1.p50` ≤ 20 ms, `writers32.savesPerSec` ≥ 500, `writers32.max` ≤ 100, and the same at 10k.
 - FP-08 flips the default only after the gate: `grep` that `wait_default` is `'durable'`, `wiring` that the group-commit drain is reachable from the server entry.
 - FP-09 test:fast < 5 min. FP-10 restores the 10k crash-guard tests.
+- Every task's allow list also holds `CHANGELOG.md` and `docs/MAP.md`, which hivevault's own rules touch on every change (a changelog entry; a MAP line for each new tracked file).
 - Baseline metrics (main 622a7cc) make any >20% regression fail. Protected values stop the bench sample counts shrinking.
 
 To use: copy `proofline.json` to the hivevault root, copy `bench/` in and commit it, then `proofline init` and `proofline next`. Test commands assume `node --test <file>` from the repo root; adjust `cmd` (owner-approved) if hivevault needs `cd server`.

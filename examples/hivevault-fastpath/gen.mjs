@@ -13,7 +13,11 @@ const common = (scope) => [
   { statement: 'Changes stay in scope', verifier: { type: 'scope', allow: scope } },
   { statement: 'Committed and pushed to main', verifier: { type: 'pushed' } },
 ];
-const S = ['server/src/**', 'server/test/**', 'docs/**', 'bench/**'];
+// hivevault's own rules touch these on every change: a CHANGELOG.md entry, and docs/MAP.md for every new tracked file.
+const allow = (...globs) => [...globs, 'CHANGELOG.md', 'docs/MAP.md'];
+const S = allow('server/src/**', 'server/test/**', 'docs/**', 'bench/**');
+const S9 = allow('server/package.json', 'package.json', 'server/test/**', 'scripts/**');
+const S10 = allow('server/test/**');
 const c = C.skeleton('hivevault');
 c.defaults.base = 'origin/main';
 c.forbidden.protected_values = [
@@ -23,7 +27,7 @@ c.forbidden.protected_values = [
 c.baseline.metrics = { '4k.flushMs': 14400, '4k.writers1.p50': 128, '4k.writers32.savesPerSec': 9, '10k.flushMs': 45000, '10k.writers1.p50': 204, '10k.writers32.savesPerSec': 5 };
 c.ci = { tasks: [] };
 c.tasks = [
-  C.makeTask({ id: 'FP-00', title: 'Bench rig committed in the repo', phase: 'plan', description: 'Copy the bench kit into bench/ and commit it, so every metric gate can be reproduced from a clean checkout (lesson: the rig lived only on one machine).', scope: ['bench/**'], criteria: [
+  C.makeTask({ id: 'FP-00', title: 'Bench rig committed in the repo', phase: 'plan', description: 'Copy the bench kit into bench/ and commit it, so every metric gate can be reproduced from a clean checkout (lesson: the rig lived only on one machine).', scope: allow('bench/**'), criteria: [
     { statement: 'bench/e2e.mjs committed', verifier: { type: 'file_exists', path: 'bench/e2e.mjs' } },
     { statement: 'bench/lib.mjs committed', verifier: { type: 'file_exists', path: 'bench/lib.mjs' } },
     { statement: 'bench/hvtrace.mjs committed', verifier: { type: 'file_exists', path: 'bench/hvtrace.mjs' } },
@@ -68,14 +72,14 @@ c.tasks = [
       m(B4, '4k', 'writers1.p50', '<=', 20), m(B4, '4k', 'writers32.savesPerSec', '>=', 500), m(B10, '10k', 'writers1.p50', '<=', 20), m(B10, '10k', 'writers32.savesPerSec', '>=', 500), ...common(S)] }),
   C.makeTask({ id: 'FP-09', title: 'test:fast tier under 5 minutes', phase: 'integrate', depends_on: ['FP-06'],
     description: 'Add test:fast (< 5 min) and test:slow; parallel, own tmpdir and port 0 per test, no sleeps. Move ops_file, check_docs_rules, offline_run, large imports to slow.',
-    scope: ['server/package.json', 'package.json', 'server/test/**', 'scripts/**'],
+    scope: S9,
     criteria: [{ statement: 'test:fast exits 0 within 300 s', verifier: { type: 'command', cmd: 'cd server && npm run test:fast', timeout_s: 300 } },
-      { statement: 'test:slow script exists', verifier: { type: 'grep', file: 'server/package.json', pattern: '"test:slow"' } }, ...common(['server/package.json', 'package.json', 'server/test/**', 'scripts/**'])] }),
+      { statement: 'test:slow script exists', verifier: { type: 'grep', file: 'server/package.json', pattern: '"test:slow"' } }, ...common(S9)] }),
   C.makeTask({ id: 'FP-10', title: 'Restore the 10k crash-guard tests', phase: 'integrate', depends_on: ['FP-06'], requirements: ['scale'],
     description: 'Restore the deleted restart and large-index crash tests at 10k scale (lesson: the cap silently deleted coverage).',
-    scope: ['server/test/**'], criteria: [
+    scope: S10, criteria: [
       { statement: 'restart crash test present', verifier: { type: 'test_exists', test_file: 'server/test/crash_restart.test.mjs' } },
-      { statement: 'large-index crash test runs at 10k', verifier: { type: 'grep', file: 'server/test/crash_large_index.test.mjs', pattern: '10_?000' } }, ...common(['server/test/**'])] }),
+      { statement: 'large-index crash test runs at 10k', verifier: { type: 'grep', file: 'server/test/crash_large_index.test.mjs', pattern: '10_?000' } }, ...common(S10)] }),
 ];
 const e = C.validate(c); if (e.length) { console.error(e.join('\n')); process.exit(1); }
 console.log(JSON.stringify(c, null, 2));

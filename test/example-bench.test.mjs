@@ -73,3 +73,14 @@ test('FP-01 checks that the flush commit exists, at 4k and 10k, and gen.mjs matc
   const gen = execFileSync(process.execPath, ['gen.mjs'], { cwd: EX, encoding: 'utf8' });
   assert.equal(gen, fs.readFileSync(path.join(EX, 'proofline.json'), 'utf8'));
 });
+
+test('every example task allows CHANGELOG.md and docs/MAP.md, and nothing else is widened', () => {
+  const c = JSON.parse(fs.readFileSync(path.join(EX, 'proofline.json'), 'utf8'));
+  const S = ['server/src/**', 'server/test/**', 'docs/**', 'bench/**'];
+  const before = { 'FP-00': ['bench/**'], 'FP-09': ['server/package.json', 'package.json', 'server/test/**', 'scripts/**'], 'FP-10': ['server/test/**'] };
+  for (const t of c.tasks) {
+    const want = [...(before[t.id] || S), 'CHANGELOG.md', 'docs/MAP.md'];
+    assert.deepEqual(t.scope.allow, want, `${t.id} scope.allow`);
+    for (const a of t.criteria.filter((x) => x.verifier.type === 'scope')) assert.deepEqual(a.verifier.allow, want, `${a.id} allow`);
+  }
+});

@@ -20,6 +20,7 @@ All notable project changes are recorded here. Dates use ISO 8601 (`YYYY-MM-DD`)
 - The corrective text for an unpushed task and the brief name the push target from the criterion's `remote`/`branch`, else `defaults.remote`/`defaults.branch`, instead of always `origin` (#8).
 - A PASS no longer always says "Commit, push to main ... Then call task_next". On a HEAD already on the push target it says the task is verified on the pushed HEAD and gives the `gate` command with claims (and `--base` when one was passed); after accepted claims it points to `proofline next`; only an unpushed PASS says to push, to the configured remote and branch (#9).
 - The hivevault fast-path example timed the flush answer, which no longer covers the seal or the commit. `bench/e2e.mjs` now sends `wait: "sealed"` and polls until the vault's HEAD commit holds the batch with the bytes on disk: `flushMs` is the time to that commit, `flushAnswerMs` the answer, and a timeout records `flushCommitted: 0` instead of a number. FP-01 gains criteria that the flush's commit exists at 4k and 10k (#3).
+- Every task in the hivevault fast-path example allows `CHANGELOG.md` and `docs/MAP.md`, which hivevault's own rules require with each change; no other path is added (#10).
 - A verify or gate with no pinned base, where the default base is HEAD (a fresh clone after the push), is BLOCKED instead of passing every diff check on an empty diff (#5).
 
 ### Added
