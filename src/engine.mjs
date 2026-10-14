@@ -17,6 +17,11 @@ export const KNOWN_LIMITS = [
   'Contracts are JSON (zero dependencies). YAML is not parsed.',
 ];
 
+/** Where a task's work is pushed: its pushed criterion's remote/branch, else defaults.remote/branch, else origin/main. */
+export function pushTarget(c, t, v = t.criteria.find((a) => a.verifier?.type === 'pushed')?.verifier) {
+  return { remote: v?.remote || C.remoteOf(c), branch: v?.branch || C.branchOf(c) };
+}
+
 function taskById(c, id) { const t = c.tasks.find((x) => x.id === id); if (!t) throw new Error(`unknown task ${id}`); return t; }
 
 export function headInfo(root) {
@@ -119,8 +124,8 @@ export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: e
   const claimResults = [];
   if (claims) {
     const res = { decision, failing: [...blocked, ...failing], measured: ctx.measured, metricLabels };
-    const push = t.criteria.find((a) => a.verifier.type === 'pushed')?.verifier;
-    for (const cl of parseClaims(claims, [t.id])) claimResults.push(checkClaim(root, cl, res, { requirePushed: !!push, remote: push?.remote || C.remoteOf(c), branch: push?.branch || C.branchOf(c) }));
+    const needPush = t.criteria.some((a) => a.verifier.type === 'pushed');
+    for (const cl of parseClaims(claims, [t.id])) claimResults.push(checkClaim(root, cl, res, { requirePushed: needPush, ...pushTarget(c, t) }));
     for (const cr of claimResults) if (!cr.ok) failing.push(...cr.issues.map((i) => `claim mismatch: ${i}`));
     if (claimResults.some((x) => !x.ok) && decision === 'PASS') decision = 'FAIL';
   }
@@ -149,7 +154,7 @@ export function steer(v, c) {
       wiring: () => `Call ${a.verifier.symbol} from the default path starting at ${a.verifier.entry}. Code that is built but not reachable does not count.`,
       scope: () => `Revert changes outside scope or ask the owner to amend the contract.`,
       docs: () => `Run \`${a.verifier.cmd}\` and commit the regenerated ${a.verifier.paths.join(', ')}.`,
-      pushed: () => `Commit everything and \`git push origin ${c.defaults?.branch || 'main'}\` (hooks on; never --no-verify).`,
+      pushed: () => { const p = pushTarget(c, t, a.verifier); return `Commit everything and \`git push ${p.remote} ${p.branch}\` (hooks on; never --no-verify).`; },
       file_exists: () => `Create ${a.verifier.path}.`,
     }[a.verifier.type]();
     L.push(`${n++}. ${r.id} [${r.type}] ${r.status.toUpperCase()}: ${a.statement || ''}\n   Evidence: ${r.detail.split('\n')[0]}\n   Next step: ${how}`);
@@ -250,7 +255,7 @@ export function brief(c, t, st = {}) {
       wiring: () => `\`${x.symbol}\` must be called on the default path from ${x.entry}`,
       scope: () => `only change: ${(x.allow || t.scope.allow).join(', ')}`,
       docs: () => `\`${x.cmd}\` leaves no diff in ${x.paths.join(', ')}`,
-      pushed: () => `committed, tree clean, HEAD == origin/${c.defaults?.branch || 'main'}`,
+      pushed: () => { const p = pushTarget(c, t, x); return `committed, tree clean, HEAD == ${p.remote}/${p.branch}`; },
       file_exists: () => `${x.path} exists`,
     }[x.type]();
     return `${i + 1}. **${a.id}**${a.mandatory === false ? ' (advisory)' : ''}: ${a.statement || ''}\n   Verifier (${x.type}): ${how}`;
@@ -259,7 +264,7 @@ export function brief(c, t, st = {}) {
   return [`# TASK ${t.id}: ${t.title}`, ...(t.owner !== undefined ? [`Owner: ${t.owner}.`] : []), `Phase: ${t.phase}. Depends on: ${(t.depends_on || []).join(', ') || 'none'} (all verified). Requirements: ${(t.requirements || []).join(', ') || '-'}.`, '',
     t.description || '', '', `## Scope (allowed paths)\n${t.scope.allow.map((s) => `- ${s}`).join('\n')}`, '',
     `## Acceptance criteria (each is checked independently; your report is not evidence)\n${crit}`, '',
-    '## Mandatory loop', '1. Write the failing test(s) first and run them: paste the failing output.', '2. Implement the cause-level fix on the default path (wired in, default config).', `3. \`proofline verify ${t.id}\` → fix until PASS. Read the corrective instruction it prints.`, `4. Commit (one task per commit), push to ${c.defaults?.branch || 'main'} with hooks on.`, `5. \`proofline gate ${t.id} --claims "<your report line>"\` and paste the report.`, '',
+    '## Mandatory loop', '1. Write the failing test(s) first and run them: paste the failing output.', '2. Implement the cause-level fix on the default path (wired in, default config).', `3. \`proofline verify ${t.id}\` → fix until PASS. Read the corrective instruction it prints.`, `4. Commit (one task per commit), push to ${pushTarget(c, t).remote} ${pushTarget(c, t).branch} with hooks on.`, `5. \`proofline gate ${t.id} --claims "<your report line>"\` and paste the report.`, '',
     '## Forbidden (detected automatically)', `- skip/only/todo in tests; raising timeouts; net removal of assertions; deleting tests; --no-verify; env bypasses (${(f.bypass_env || []).join(', ')}); lowering protected values (${(f.protected_values || []).map((p) => p.file).join(', ') || 'none configured'}); editing thresholds/commands/criteria in proofline.json.`, '',
     '## Owner rules', ...(c.owner_rules || []).map((r) => `- ${r}`), '',
     '## Stop rules', ...t.stop_rules.map((s) => `- ${s}`), '',

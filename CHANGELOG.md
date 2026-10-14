@@ -17,6 +17,7 @@ All notable project changes are recorded here. Dates use ISO 8601 (`YYYY-MM-DD`)
 ### Fixed
 - The forbidden scan no longer reads `proofline.json` or `.proofline/`: the commit that adds or amends the contract failed on its own deny-list. Contract changes stay covered by the weakening check, and the gate report says whether the contract was added, changed or unchanged vs the base (#4).
 - `init` no longer replaces an existing `pre-commit` or `pre-push` hook: it keeps it as `<hook>.proofline-prev`, and the installed hook runs it first (same arguments and stdin) and stops on its failure. A second `init` changes nothing (#1).
+- The corrective text for an unpushed task and the brief name the push target from the criterion's `remote`/`branch`, else `defaults.remote`/`defaults.branch`, instead of always `origin` (#8).
 - A verify or gate with no pinned base, where the default base is HEAD (a fresh clone after the push), is BLOCKED instead of passing every diff check on an empty diff (#5).
 
 ### Added

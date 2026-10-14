@@ -54,3 +54,29 @@ test('defaults.remote must be a remote name', () => {
   c.defaults.remote = 'github';
   assert.deepEqual(P.C.validate(c), []);
 });
+
+test('the corrective text and the brief name the configured remote, never origin', () => {
+  const r = githubRepo();
+  const n = P.taskNext(r);
+  assert.match(n.brief, /HEAD == github\/main/);
+  assert.doesNotMatch(n.brief, /\borigin\b/);
+  write(r, { 'src/x.mjs': 'export const x = 1;\n' });
+  commitAll(r, 'T: x');
+  const g = P.E.verifyTask(r, 'T');
+  assert.equal(g.decision, 'FAIL');
+  const text = P.E.steer(g, P.C.load(r));
+  assert.match(text, /`git push github main`/);
+  assert.doesNotMatch(text, /\borigin\b/);
+});
+
+test('a pushed criterion with its own remote wins over defaults.remote in the corrective text', () => {
+  const r = githubRepo();
+  const mirror = path.join(path.dirname(r), 'mirror.git');
+  sh(path.dirname(r), 'init', '-q', '--bare', '-b', 'main', mirror); sh(r, 'remote', 'add', 'mirror', mirror);
+  const c = P.C.load(r); c.tasks.push(P.C.makeTask({ id: 'U', title: 'u', criteria: [{ verifier: { type: 'pushed', remote: 'mirror', branch: 'release' } }] })); P.C.save(r, c);
+  commitAll(r, 'U'); sh(r, 'push', '-q', 'github', 'main');
+  const g = P.E.verifyTask(r, 'U', { base: 'HEAD~1' });
+  assert.equal(g.decision, 'FAIL');
+  assert.match(P.E.steer(g, P.C.load(r)), /`git push mirror release`/);
+  assert.match(P.E.brief(P.C.load(r), P.C.load(r).tasks.find((t) => t.id === 'U')), /HEAD == mirror\/release/);
+});
