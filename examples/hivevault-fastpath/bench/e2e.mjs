@@ -11,8 +11,9 @@ let t=performance.now(); const chunk=[];
 for(let i=0;i<N;i+=200){const s=performance.now();const writes=[];for(let j=i;j<Math.min(N,i+200);j++)writes.push({path:`work/p/n${j}.md`,body:body(j)});
  const r=await L.http(v,'POST','/v1/notes/batch',{body:{writes,defer:true}}); if(r.status>=300){out.loadErr=[r.status,r.text.slice(0,300)];save();console.log(JSON.stringify(out));process.exit(1)} chunk.push((performance.now()-s)/writes.length);}
 out.loopMs=+(performance.now()-t).toFixed(0); out.loopMsPerNote=+(out.loopMs/N).toFixed(2); out.chunkMsPerNote={first:+chunk[0].toFixed(2),last:+chunk.at(-1).toFixed(2)};
-t=performance.now(); const f=await L.http(v,'POST','/v1/notes/batch',{body:{flush:true}}); out.flushMs=+(performance.now()-t).toFixed(0); out.flushStatus=f.status; out.flushResp=(f.text||'').slice(0,300);
-out.rssLoaded=rss(pid(PORT)); save(); console.error('loaded',out.loopMs,out.flushMs,f.status);
+// flushMs: time until the vault's HEAD commit holds the whole batch (seal and commit included); flushAnswerMs: time to the HTTP answer.
+Object.assign(out,await L.flushToCommit(v,Array.from({length:N},(_,j)=>`work/p/n${j}.md`)));
+out.rssLoaded=rss(pid(PORT)); save(); console.error('loaded',out.loopMs,out.flushMs,out.flushAnswerMs,out.flushStatus,out.flushErr||'');
 for(const Wn of [1,8,32]){const lat=[];const per=Wn===1?40:Math.ceil(640/Wn);const s=performance.now();let errs=0;
  await Promise.all(Array.from({length:Wn},async(_,w)=>{for(let k=0;k<per;k++){const r=await L.http(v,'PUT',`/v1/notes/work/c/w${Wn}-${w}-${k}.md`,{body:{body:body(N+w*1000+k)}});if(r.status>=300)errs++;lat.push(r.ms)}}));
  const el=(performance.now()-s)/1000; out[`writers${Wn}`]={...st(lat),savesPerSec:+(lat.length/el).toFixed(0),errs}; save(); console.error(Wn,JSON.stringify(out[`writers${Wn}`]));}

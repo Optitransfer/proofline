@@ -101,5 +101,42 @@ export function parseTool(m) {
 }
 
 export function git(root, ...args) { return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }); }
+
+/** Does the vault's HEAD commit hold every path in `want`, with the bytes that are on disk? */
+export function commitHolds(root, want) {
+  let sha; try { sha = execFileSync('git', ['-C', root, 'rev-parse', '--verify', '--quiet', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return { ok: false, sha: null, have: 0 }; }
+  const blobs = new Map();
+  for (const e of execFileSync('git', ['-C', root, 'ls-tree', '-r', '-z', '--full-tree', 'HEAD'], { encoding: 'utf8', maxBuffer: 256 << 20 }).split('\0')) {
+    const tab = e.indexOf('\t'); if (tab < 0) continue;
+    const p = e.slice(tab + 1); if (want.has(p)) blobs.set(p, e.slice(0, tab).split(' ')[2]);
+  }
+  if (blobs.size < want.size) return { ok: false, sha, have: blobs.size };
+  // Every path is in the commit; it holds the batch only if each blob is the file as written (#465: a commit can hold later bytes).
+  const paths = [...want];
+  const disk = execFileSync('git', ['-C', root, 'hash-object', '--stdin-paths'], { input: paths.join('\n') + '\n', encoding: 'utf8', maxBuffer: 256 << 20 }).trim().split('\n');
+  const same = paths.filter((p, i) => blobs.get(p) === disk[i]).length;
+  return { ok: same === paths.length, sha, have: same };
+}
+
+/**
+ * Time a batch flush to completion. The flush asks for wait: "sealed" (hivevault answers before the seal and the
+ * commit unless it honours that, mgillr/hivevault#468), then polls until the vault's HEAD commit holds the batch.
+ * flushAnswerMs is the time to the answer; flushMs the time to the commit. A timeout records flushCommitted: 0 and
+ * flushErr, never a flushMs.
+ */
+export async function flushToCommit(v, paths, { timeoutMs = 600000, pollMs = 25 } = {}) {
+  const t0 = performance.now();
+  const f = await http(v, 'POST', '/v1/notes/batch', { body: { flush: true, wait: 'sealed' } });
+  const out = { flushAnswerMs: +(performance.now() - t0).toFixed(0), flushStatus: f.status, flushResp: (f.text || f.error || '').slice(0, 300) };
+  if (!(f.status >= 200 && f.status < 300)) return { ...out, flushCommitted: 0, flushErr: `flush answered ${f.status}` };
+  const want = new Set(paths);
+  let last = { sha: null, have: 0 }, seen = null;
+  for (;;) {
+    const head = (() => { try { return execFileSync('git', ['-C', v.root, 'rev-parse', '--verify', '--quiet', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; } })();
+    if (head && head !== seen) { seen = head; last = commitHolds(v.root, want); if (last.ok) return { ...out, flushMs: +(performance.now() - t0).toFixed(0), flushCommit: last.sha, flushCommitted: 1 }; }
+    if (performance.now() - t0 > timeoutMs) return { ...out, flushCommitted: 0, flushErr: `no commit held all ${want.size} paths within ${timeoutMs} ms (HEAD ${last.sha || 'none'} held ${last.have} of ${want.size})` };
+    await sleep(pollMs);
+  }
+}
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export function pct(arr, p) { if (!arr.length) return null; const s = [...arr].sort((a, b) => a - b); return +s[Math.min(s.length - 1, Math.floor(p * s.length))].toFixed(1); }

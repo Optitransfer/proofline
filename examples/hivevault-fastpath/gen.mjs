@@ -5,6 +5,8 @@ const B10 = 'WAIT=durable HV_REPO=$PWD BENCH_DIR=/tmp/hvbench node bench/e2e.mjs
 const T = 'node --test {test}';
 const SUITE = { type: 'command', cmd: 'cd server && node --test --test-concurrency=8 "test/*.test.mjs"', timeout_s: 1800, min_tests: 1088 };
 const m = (cmd, n, key, op, value, labels = []) => ({ statement: `${key} ${op} ${value} at ${n}`, verifier: { type: 'metric', cmd, key, op, value, name: `${n}.${key}`, labels, timeout_s: 3600 } });
+// The bench reports flushCommitted 1 only when the vault's HEAD commit holds every note of the batch, bytes included.
+const committed = (cmd, n) => ({ ...m(cmd, n, 'flushCommitted', '==', 1), statement: `The flush's commit exists at ${n}: HEAD holds every note of the batch, bytes included` });
 const rg = (file, name, statement) => ({ statement, verifier: { type: 'test_red_green', test_file: file, test_name: name, cmd: T } });
 const common = (scope) => [
   { statement: 'Full parallel suite exits 0, nothing hung (≥ 1,088 tests: none deleted)', verifier: SUITE },
@@ -29,7 +31,8 @@ c.tasks = [
   C.makeTask({ id: 'FP-01', title: 'Git commit without one process per file', depends_on: ['FP-00'], requirements: ['#407'],
     description: 'server/src/sync.mjs _fastImport: replace the per-file `git cat-file blob :path` loop with one `git ls-files -s -z` per batch; emit `M <mode> <blob-id> <path>`.',
     scope: S, criteria: [rg('server/test/fastimport_spawns.test.mjs', null, '200-file batch uses ≤ 3 _gitInput calls; git fsck exit 0; all 200 files correct'),
-      m(B4, '4k', 'flushMs', '<=', 1500, ['seal', 'flush']), m(B10, '10k', 'flushMs', '<=', 4000, ['seal', 'flush']), ...common(S)] }),
+      m(B4, '4k', 'flushMs', '<=', 1500, ['seal', 'flush']), m(B10, '10k', 'flushMs', '<=', 4000, ['seal', 'flush']), ...common(S),
+      committed(B4, '4k'), committed(B10, '10k')] }),
   C.makeTask({ id: 'FP-02', title: 'Durable writes do not save the index on the ack path', depends_on: ['FP-01'], requirements: ['#409'],
     description: "core.mjs _indexStep(paths, warnings, removed, { defer }): indexOne then a 50 ms debounced index.save() via _bg(); drain() flushes it.",
     scope: S, criteria: [rg('server/test/index_deferred.test.mjs', null, 'write resolves within 1 s with save stubbed to hang; 10 writes → 1 save after drain; search finds the note'), ...common(S)] }),

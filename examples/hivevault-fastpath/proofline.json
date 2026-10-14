@@ -232,6 +232,36 @@
           "verifier": {
             "type": "pushed"
           }
+        },
+        {
+          "id": "FP-01-AC07",
+          "mandatory": true,
+          "statement": "The flush's commit exists at 4k: HEAD holds every note of the batch, bytes included",
+          "verifier": {
+            "type": "metric",
+            "cmd": "WAIT=durable HV_REPO=$PWD BENCH_DIR=/tmp/hvbench node bench/e2e.mjs 4000 47710",
+            "key": "flushCommitted",
+            "op": "==",
+            "value": 1,
+            "name": "4k.flushCommitted",
+            "labels": [],
+            "timeout_s": 3600
+          }
+        },
+        {
+          "id": "FP-01-AC08",
+          "mandatory": true,
+          "statement": "The flush's commit exists at 10k: HEAD holds every note of the batch, bytes included",
+          "verifier": {
+            "type": "metric",
+            "cmd": "WAIT=durable HV_REPO=$PWD BENCH_DIR=/tmp/hvbench node bench/e2e.mjs 10000 47711",
+            "key": "flushCommitted",
+            "op": "==",
+            "value": 1,
+            "name": "10k.flushCommitted",
+            "labels": [],
+            "timeout_s": 3600
+          }
         }
       ],
       "stop_rules": [
