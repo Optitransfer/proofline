@@ -16,7 +16,7 @@ contract ──► next (one task, full brief) ──► agent works ──► v
 
 ```bash
 cd /path/to/target-repo
-node /path/to/proofline/bin/proofline.mjs init          # proofline.json, .proofline/, git hooks
+node /path/to/proofline/bin/proofline.mjs init          # proofline.json, .proofline/, git hooks (an existing hook is kept, see below)
 node /path/to/proofline/bin/proofline.mjs contract create --from task.json
 node /path/to/proofline/bin/proofline.mjs next          # the single next task + meticulous brief
 node /path/to/proofline/bin/proofline.mjs verify FP-01  # independent checks + corrective prompt
@@ -26,6 +26,10 @@ node /path/to/proofline/bin/proofline.mjs status
 ```
 
 Exit codes: `0` PASS, `1` FAIL, `2` BLOCKED, `3` usage. Every command takes `--json`.
+
+## Git hooks
+
+`init` installs `pre-commit` (forbidden actions and contract weakening vs HEAD) and `pre-push` (the active task must gate PASS). If the repository already has one of these hooks and it is not proofline's, `init` keeps it as `<hook>.proofline-prev` and says so. The installed hook runs it first, with the same arguments and stdin; if it fails, its exit code stands and the gate does not run. Running `init` again changes nothing. If both `<hook>` and `<hook>.proofline-prev` exist and neither is proofline's, `init` stops rather than lose one.
 
 ## Base revision
 

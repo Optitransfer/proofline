@@ -37,7 +37,7 @@ Global: --json  --root <dir>   Exit: 0 PASS, 1 FAIL, 2 BLOCKED, 3 usage`;
 try {
   const [cmd, sub] = pos;
   switch (cmd) {
-    case 'init': print(P.init(root, { hooks: !flags['no-hooks'] }), `initialised ${root}`); break;
+    case 'init': { const r = P.init(root, { hooks: !flags['no-hooks'] }); print(r, `initialised ${root}${r.made.map((m) => `\n  ${m}`).join('')}`); break; }
     case 'contract': {
       if (sub === 'create') {
         const spec = flags.from ? JSON.parse(fs.readFileSync(flags.from, 'utf8')) : { id: flags.id, title: flags.title, phase: flags.phase, description: flags.description || '', depends_on: flags.depends ? String(flags.depends).split(',') : [], scope: flags.scope ? String(flags.scope).split(',') : undefined, criteria: [] };

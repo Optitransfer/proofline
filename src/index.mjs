@@ -27,16 +27,51 @@ export function init(root, { hooks = true, project } = {}) {
   return { root, made };
 }
 
+const HOOK_MARK = '# installed by proofline';
+export const PREV_SUFFIX = '.proofline-prev';
+
+/**
+ * The hook script. A hook that was there before init is kept as <hook>.proofline-prev and runs first,
+ * with the same arguments and stdin; if it fails, its exit code stands and the gate does not run.
+ * No bypass variable is read here, by design.
+ */
+export function hookScript(h, node = process.execPath, bin = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'bin', 'proofline.mjs')) {
+  const gate = `"${node}" "${bin}" hook ${h} "$@"`;
+  return [
+    '#!/bin/sh',
+    `${HOOK_MARK}; there is no skip/bypass variable`,
+    `# If a ${h} hook was here before init, it was kept as ${h}${PREV_SUFFIX}: it runs first, and its refusal stands.`,
+    `prev="$(dirname "$0")/${h}${PREV_SUFFIX}"`,
+    'if [ -x "$prev" ]; then',
+    '  input="$(mktemp)" || exit 1',
+    `  trap 'rm -f "$input"' EXIT`,
+    '  cat > "$input"',
+    `  "$prev" "$@" < "$input" || { rc=$?; echo "proofline: ${h}${PREV_SUFFIX} refused (exit $rc)" >&2; exit $rc; }`,
+    `  ${gate} < "$input"`,
+    '  exit $?',
+    'fi',
+    `exec ${gate}`,
+    '',
+  ].join('\n');
+}
+
 export function installHooks(root) {
   const hd = git(['rev-parse', '--git-path', 'hooks'], root);
   if (!hd.ok) return [];
   const dir = path.resolve(root, hd.out);
   fs.mkdirSync(dir, { recursive: true });
-  const bin = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'bin', 'proofline.mjs');
   const out = [];
   for (const h of ['pre-commit', 'pre-push']) {
-    // No bypass variable is read here, by design.
-    fs.writeFileSync(path.join(dir, h), `#!/bin/sh\n# installed by proofline; there is no skip/bypass variable\nexec "${process.execPath}" "${bin}" hook ${h} "$@"\n`, { mode: 0o755 });
+    const f = path.join(dir, h), prev = f + PREV_SUFFIX;
+    let cur = null; try { cur = fs.readFileSync(f, 'utf8'); } catch {}
+    if (cur !== null && !cur.includes(HOOK_MARK)) {
+      // Never lose a hook: if both slots are taken by foreign hooks, stop and let the owner merge them.
+      if (fs.existsSync(prev)) throw new Error(`${f} and ${prev} both exist and neither is proofline's; merge them into one, then run init again`);
+      fs.renameSync(f, prev);
+      out.push(`hooks/${h}${PREV_SUFFIX} (the existing ${h} hook, kept; it runs before the proofline gate)`);
+    }
+    fs.writeFileSync(f, hookScript(h), { mode: 0o755 });
+    fs.chmodSync(f, 0o755);
     out.push(`hooks/${h}`);
   }
   return out;
