@@ -46,6 +46,8 @@ export function verifyTask(root, taskId, { claims, only, skipTypes = [] } = {}) 
   let baseContract = null;
   if (base) { const s = git(['show', `${base}:proofline.json`], root); if (s.ok) try { baseContract = JSON.parse(s.out); } catch {} }
   const weak = C.weakenings(baseContract, c);
+  // The forbidden scan skips proofline.json (it declares the deny-list); a contract change is reported here instead.
+  const contractChange = !base ? 'unknown' : !baseContract ? 'added' : C.contractHash(baseContract) === C.contractHash(c) ? 'unchanged' : 'changed';
   const chain = verifyChain(root);
 
   const blocked = [], failing = [];
@@ -71,7 +73,7 @@ export function verifyTask(root, taskId, { claims, only, skipTypes = [] } = {}) 
     if (claimResults.some((x) => !x.ok) && decision === 'PASS') decision = 'FAIL';
   }
   const hi = headInfo(root);
-  return { task: t.id, title: t.title, phase: t.phase, decision, base, base_ref: baseRef, ...hi, contract_hash: C.contractHash(c), results, forbidden, weakenings: weak, blocked, failing, measured: ctx.measured, claims: claimResults, changed: [...ctx.changed.keys()], ts: new Date().toISOString() };
+  return { task: t.id, title: t.title, phase: t.phase, decision, base, base_ref: baseRef, ...hi, contract_hash: C.contractHash(c), results, forbidden, weakenings: weak, contract_change: contractChange, blocked, failing, measured: ctx.measured, claims: claimResults, changed: [...ctx.changed.keys()], ts: new Date().toISOString() };
 }
 
 /** Corrective prompt tied to each failed criterion. */
@@ -108,7 +110,8 @@ function reportMd(v, c, prompt) {
   return [`# Proofline gate: ${v.task} — **${v.decision}**`, '', `- Task: ${v.title} (phase ${v.phase})`, `- Revision: ${v.head} (tree ${v.tree.slice(0, 12)})`, `- Base: ${v.base_ref} = ${v.base}`, `- Contract hash: ${v.contract_hash}`, `- Time: ${v.ts}`, '',
     '## Acceptance criteria', '', '| ID | Verifier | Mandatory | Result | Evidence |', '|---|---|---|---|---|', ...v.results.map(row), '',
     '## Measured', '', ...(Object.keys(v.measured).length ? Object.entries(v.measured).map(([k, x]) => `- ${k}: ${x}`) : ['- none']), '',
-    '## Forbidden actions', '', ...(v.forbidden.length ? v.forbidden.map((f) => `- ${f.rule} in ${f.file}: \`${f.line}\` (${f.why})`) : ['- none detected']), '',
+    '## Forbidden actions', '', ...(v.forbidden.length ? v.forbidden.map((f) => `- ${f.rule} in ${f.file}: \`${f.line}\` (${f.why})`) : ['- none detected']),
+    `- proofline.json is not scanned (it declares the deny-list); vs base it is ${v.contract_change}${v.contract_change === 'added' || v.contract_change === 'changed' ? `, judged by the weakening check: ${v.weakenings.length} weakening(s)` : ''}`, '',
     '## Blockers', '', ...(v.blocked.length ? v.blocked.map((b) => `- ${b}`) : ['- none']), '',
     '## Claims vs evidence', '', ...(v.claims.length ? v.claims.map((x) => `- ${x.ok ? 'OK' : 'REJECTED'}: \`${x.claim}\`${x.ok ? '' : '\n  - ' + x.issues.join('\n  - ')}`) : ['- no claim submitted']), '',
     `## Scope (${v.changed.length} changed files)`, '', ...v.changed.slice(0, 50).map((f) => `- ${f}`), '',

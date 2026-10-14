@@ -8,11 +8,14 @@ const SKIP_RE = /\.(skip|only|todo)\s*\(|\{\s*(skip|only|todo)\s*:\s*(true|['"`]
 const TIMEOUT_RE = /timeout[^\d\n]{0,24}(\d[\d_]*)/i;
 const ASSERT_RE = /\bassert\b|\bexpect\s*\(|\bt\.(is|ok|deepEqual|equal|throws|true|false)\b/;
 const NOVERIFY_RE = /(--no-verify\b|\bgit\s+(commit|push)\b[^\n]*\s-n\b)/;
+// The contract declares the deny-list, so its own text always matches it. A contract change is
+// judged by weakenings() against the base contract instead; local state is never part of the work.
+export const CONTRACT_PATHS = ['proofline.json', '.proofline/**'];
 
 export function scanForbidden(root, base, rules = {}) {
   const findings = [];
   if (!base) return findings;
-  const ign = rules.ignore_paths || [];
+  const ign = [...CONTRACT_PATHS, ...(rules.ignore_paths || [])];
   const files = diffHunks(root, base).filter((f) => !matchAny(f.file, ign));
   for (const f of files) {
     const isTest = TEST_FILE_RE.test(f.file);

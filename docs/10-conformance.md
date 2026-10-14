@@ -26,6 +26,7 @@
 | Agent claims a file changed but diff does not contain it | Unsupported-claim finding |
 | Check output contains a secret-shaped value | Redact before persistence; test redaction metadata |
 | Adapter drops an enforcement-critical event | Enforcement cannot silently pass |
+| Commit adds or amends `proofline.json` with the default deny-list | No forbidden finding in the contract itself; the change is judged by the weakening check |
 
 ## Conformance fixture format
 
