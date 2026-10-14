@@ -22,6 +22,7 @@ node /path/to/proofline/bin/proofline.mjs next          # the single next task +
 node /path/to/proofline/bin/proofline.mjs verify FP-01  # independent checks + corrective prompt
 node /path/to/proofline/bin/proofline.mjs gate FP-01 --claims "FP-01 | done | abc1234 | x.test.mjs | 4k.flushMs=1100 | -"
 node /path/to/proofline/bin/proofline.mjs gate FP-01 --base 1a2b3c4   # in a fresh clone: the revision the task started from
+node /path/to/proofline/bin/proofline.mjs gate FP-01 --fresh          # run every check again, even with reuse on (see below)
 node /path/to/proofline/bin/proofline.mjs status
 ```
 
@@ -48,6 +49,25 @@ Every diff check (forbidden scan, `scope`, `test_red_green`, contract weakening)
 A repository whose remote is not called `origin` sets `defaults.remote` (for example `"github"`) and leaves `defaults.base` out; `pushed`, claim reconciliation and the default base then use that remote.
 
 Every report says which one it used, and `brief <TASK> [--base <rev>]` says which base `verify` and `gate` will use and whether it would block. A fresh clone has no log, and after the push the default base is HEAD, so the diff is empty and every diff check would pass on nothing. In that case the gate is BLOCKED, never PASS, and the corrective line asks for `--base <rev>` (for one commit, its parent) or `proofline next`. The CI workflow passes the previous tip of the pushed branch as `--base`.
+
+## Reusing results (verify, then gate)
+
+`verify` and `gate` run every check each time. When a task's slowest check is the full suite, `verify`, `gate` and the pre-push hook on the same commit run it two or three times with nothing changed. A contract can opt in to reuse:
+
+```json
+"defaults": { "reuse_results": true, "reuse_max_age_h": 24 }
+```
+
+- `reuse_results` (`true`/`false`, default `false`): with it off, or left out, every check runs every time, as before. Turning it on or off is not a contract weakening.
+- Only `command` and `metric` results are reused. `test_red_green`, `scope`, `wiring`, `grep`, `docs`, `pushed`, the forbidden scan and the weakening check always run: they are cheap, or they depend on the base.
+- Only a PASS is stored. A FAIL, a flaky result, a busy-machine block or an error runs again every time.
+- A PASS is reused only on the same HEAD with a clean tree: `git status` shows nothing outside `.proofline/`, untracked files included. An uncommitted edit never reuses a result, and a check run on a dirty tree is not stored.
+- The key is the criterion's verifier object (canonical JSON), the HEAD sha, `process.version` and the values of the env vars the command names (`$VAR`, `${VAR}`; `{VAR}` in a metric's `output_file`); for a metric also its baseline and the regression tolerance. Change any of them and the check runs again. Gitignored files, env vars the command does not name and tools outside the repo are not in the key: a check that depends on them needs `--fresh`.
+- `reuse_max_age_h` (a positive number, default 24): an older PASS runs again.
+- A metric PASS is reused only if the load per CPU it recorded is within `defaults.max_load_per_cpu`, when that is set. Its measured value is reused with it, so claims are checked against it.
+- A fresh PASS is recorded in the evidence log (a `result` entry) and `.proofline/cache/<sha256 of key>.json` points at that entry with its hash, time, status, detail and evidence (exit code, test counts, duration). A result is reused only from that entry, and only while it is in an intact chain with the same hash; an edited or truncated log, or a cache file that names another hash, means the check runs again.
+- Every reused criterion says `reused from <time> (evidence entry <n>)` in its report line, the gate report lists reused criteria under **Reused results** (not run again in that gate), and the gate's evidence entry carries the same lines.
+- `--fresh` on `verify` and `gate` (MCP: `fresh: true`) ignores stored results and runs every check; a PASS it gets replaces the stored one.
 
 Demo (claimed done with no evidence → FAIL, then real work → PASS): `npm run demo`.
 
@@ -93,4 +113,4 @@ proofline.json           Proofline's own contract (self-gate, also run in CI)
 
 ## Known limits
 
-See `KNOWN_LIMITS` in `src/engine.mjs`; they are printed in every report. In short: same-machine agents can edit local state (tampering is detected, and CI re-verifies, but protect `proofline.json` with branch protection/CODEOWNERS); `--no-verify` can skip local hooks (CI catches it); static wiring/forbidden checks are heuristics; contracts are JSON only.
+See `KNOWN_LIMITS` in `src/engine.mjs`; they are printed in every report. In short: same-machine agents can edit local state (tampering is detected, and CI re-verifies, but protect `proofline.json` with branch protection/CODEOWNERS); `--no-verify` can skip local hooks (CI catches it); static wiring/forbidden checks are heuristics; contracts are JSON only; with `reuse_results` on, a reused PASS is keyed on HEAD, node and the env vars the command names, not on gitignored files or tools outside the repo.

@@ -7,6 +7,7 @@ import { verifiers, resolveBase, changedFiles } from './checks.mjs';
 import { scanForbidden } from './forbidden.mjs';
 import { parseClaims, checkClaim } from './claims.mjs';
 import { record, readLog, verifyChain } from './evidence.mjs';
+import * as RC from './cache.mjs';
 
 export const KNOWN_LIMITS = [
   'Proofline runs on the same machine as the agent: an agent with shell access could edit .proofline/ or proofline.json. The hash chain makes edits detectable, contract weakening vs the base revision is flagged, and CI re-verifies from a clean checkout; protect proofline.json with CODEOWNERS/branch protection for a hard boundary.',
@@ -15,6 +16,7 @@ export const KNOWN_LIMITS = [
   'Red-green replays the new test against the base revision in a git worktree. Tests needing services or build steps need a "setup" command.',
   'Metric checks trust the bench script committed in the repo; a changed bench command is flagged as a contract change, but the bench itself is code under review.',
   'Contracts are JSON (zero dependencies). YAML is not parsed.',
+  'With defaults.reuse_results on, a PASS of a command or metric check is reused on the same HEAD with a clean tree for up to reuse_max_age_h hours. Its key holds the verifier, HEAD, the node version and the env vars the command names, not gitignored files, other env vars or tools outside the repo; a check that depends on those needs --fresh.',
 ];
 
 /** Where a task's work is pushed: its pushed criterion's remote/branch, else defaults.remote/branch, else origin/main. */
@@ -82,7 +84,7 @@ export function baseBrief(root, c, t, explicit) {
   return L.join('\n');
 }
 
-export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: explicitBase, machine } = {}) {
+export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: explicitBase, machine, fresh = false } = {}) {
   const c = C.load(root);
   const t = taskById(c, taskId);
   const errs = C.validate(c);
@@ -90,11 +92,22 @@ export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: e
   const { ref: baseRef, source: baseSource, base, problems: baseProblems } = taskBase(root, c, t, explicitBase);
   const ctx = { root, contract: c, task: t, base, changed: base ? changedFiles(root, base) : new Map(), measured: {}, machine, baseline: c.baseline?.metrics, tolerancePct: c.defaults?.regression_tolerance_pct, flakyReruns: c.defaults?.flaky_reruns ?? 1 };
   const results = [];
+  const reuse = RC.settings(c);
   for (const a of t.criteria) {
     if (only && !only.includes(a.id)) continue;
     if (skipTypes.includes(a.verifier.type)) continue;
     let r;
-    try { r = verifiers[a.verifier.type](a.verifier, ctx); } catch (e) { r = { status: 'error', detail: `verifier crashed: ${e.message}` }; }
+    // Reuse (opt-in): a command or metric PASS recorded on this HEAD with a clean tree is not run again; --fresh runs it.
+    const k = reuse.on && RC.REUSABLE.includes(a.verifier.type) ? RC.keyFor(root, a.verifier, ctx) : null;
+    const hit = k && !fresh ? RC.lookup(root, k.key, reuse) : null;
+    if (hit) {
+      r = RC.reusedResult(hit);
+      if (a.verifier.type === 'metric') ctx.measured[a.verifier.name || a.verifier.key] = hit.data.evidence.measured;
+    } else {
+      try { r = verifiers[a.verifier.type](a.verifier, ctx); } catch (e) { r = { status: 'error', detail: `verifier crashed: ${e.message}` }; }
+      // Only a PASS is stored, and only if the tree is still the one the check started on and the log is intact.
+      if (k && r.status === 'pass' && RC.keyFor(root, a.verifier, ctx)?.key === k.key && verifyChain(root).ok) RC.store(root, k, t.id, a, r);
+    }
     results.push({ id: a.id, statement: a.statement, mandatory: a.mandatory !== false, type: a.verifier.type, ...r });
   }
   const rules = { ...C.DEFAULT_FORBIDDEN, ...(c.forbidden || {}) };
@@ -136,7 +149,8 @@ export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: e
   const tgt = pushTarget(c, t);
   const pushed = pr ? pr.status === 'pass'
     : !!hi.head && !git(['status', '--porcelain'], root).out.split('\n').some((l) => l && !l.includes('.proofline/')) && git(['rev-parse', '--verify', '--quiet', `refs/remotes/${tgt.remote}/${tgt.branch}^{commit}`], root).out === hi.head;
-  return { pushed, task: t.id, title: t.title, phase: t.phase, decision, base, base_ref: baseRef, base_source: baseSource, ...hi, contract_hash: C.contractHash(c), results, forbidden, weakenings: weak, contract_change: contractChange, blocked, failing, measured: ctx.measured, claims: claimResults, changed: [...ctx.changed.keys()], ts: new Date().toISOString() };
+  const reused = results.filter((r) => r.reused).map((r) => ({ id: r.id, type: r.type, ts: r.reused.ts, entry: r.reused.entry }));
+  return { pushed, task: t.id, title: t.title, phase: t.phase, decision, base, base_ref: baseRef, base_source: baseSource, ...hi, contract_hash: C.contractHash(c), results, reuse: !reuse.on ? 'off' : fresh ? 'fresh' : 'on', reused, forbidden, weakenings: weak, contract_change: contractChange, blocked, failing, measured: ctx.measured, claims: claimResults, changed: [...ctx.changed.keys()], ts: new Date().toISOString() };
 }
 
 /** Corrective prompt tied to each failed criterion. */
@@ -178,10 +192,13 @@ export function steer(v, c) {
   return L.join('\n');
 }
 
+const reusedFrom = (x) => `reused from ${x.ts} (evidence entry ${x.entry})`;
+
 function reportMd(v, c, prompt) {
   const row = (r) => `| ${r.id} | ${r.type} | ${r.mandatory ? 'yes' : 'no'} | ${r.status.toUpperCase()} | ${r.detail.split('\n')[0].replace(/\|/g, '\\|')} |`;
   return [`# Proofline gate: ${v.task} is **${v.decision}**`, '', `- Task: ${v.title} (phase ${v.phase})`, `- Revision: ${v.head} (tree ${v.tree.slice(0, 12)})`, `- Base: ${v.base_ref} = ${v.base} (${v.base_source})`, `- Contract hash: ${v.contract_hash}`, `- Time: ${v.ts}`, '',
     '## Acceptance criteria', '', '| ID | Verifier | Mandatory | Result | Evidence |', '|---|---|---|---|---|', ...v.results.map(row), '',
+    '## Reused results', '', ...(v.reused.length ? v.reused.map((x) => `- ${x.id} [${x.type}]: ${reusedFrom(x)}; not run again in this gate`) : [`- none${{ off: ' (defaults.reuse_results is off)', fresh: ' (--fresh)' }[v.reuse] || ''}`]), '',
     '## Measured', '', ...(Object.keys(v.measured).length ? Object.entries(v.measured).map(([k, x]) => `- ${k}: ${x}`) : ['- none']), '',
     '## Forbidden actions', '', ...(v.forbidden.length ? v.forbidden.map((f) => `- ${f.rule} in ${f.file}: \`${f.line}\` (${f.why})`) : ['- none detected']),
     `- proofline.json is not scanned (it declares the deny-list); vs base it is ${v.contract_change}${v.contract_change === 'added' || v.contract_change === 'changed' ? `, judged by the weakening check: ${v.weakenings.length} weakening(s)` : ''}`, '',
@@ -189,7 +206,7 @@ function reportMd(v, c, prompt) {
     '## Claims vs evidence', '', ...(v.claims.length ? v.claims.map((x) => `- ${x.ok ? 'OK' : 'REJECTED'}: \`${x.claim}\`${x.ok ? '' : '\n  - ' + x.issues.join('\n  - ')}`) : ['- no claim submitted']), '',
     `## Scope (${v.changed.length} changed files)`, '', ...v.changed.slice(0, 50).map((f) => `- ${f}`), '',
     '## Corrective instruction', '', '```', prompt, '```', '',
-    '## Status vocabulary', '', '- PASS: every mandatory criterion passed on this exact revision with fresh evidence; no forbidden action; claims match.', '- FAIL: a mandatory criterion failed or was flaky, a forbidden action was found, or a claim contradicts the evidence.', '- BLOCKED: a check could not run, the contract was weakened, or the evidence log was tampered with. Needs the owner.', '',
+    '## Status vocabulary', '', '- PASS: every mandatory criterion passed on this exact revision, with fresh evidence or a PASS reused from this revision on a clean tree (listed under Reused results); no forbidden action; claims match.', '- FAIL: a mandatory criterion failed or was flaky, a forbidden action was found, or a claim contradicts the evidence.', '- BLOCKED: a check could not run, the contract was weakened, or the evidence log was tampered with. Needs the owner.', '',
     '## Known limits', '', ...KNOWN_LIMITS.map((k) => `- ${k}`), ''].join('\n');
 }
 
@@ -205,7 +222,7 @@ export function gate(root, taskId, opts = {}) {
   fs.writeFileSync(path.join(dir, `${taskId}-${stamp}.md`), reportMd(v, c, prompt));
   writeJson(path.join(dir, `${taskId}-latest.json`), json);
   fs.writeFileSync(path.join(dir, `${taskId}-latest.md`), reportMd(v, c, prompt));
-  const e = record(root, 'gate', { task: taskId, decision: v.decision, head: v.head, tree: v.tree, base: v.base, base_source: v.base_source, contract_hash: v.contract_hash, failing: v.failing, blocked: v.blocked, measured: v.measured });
+  const e = record(root, 'gate', { task: taskId, decision: v.decision, head: v.head, tree: v.tree, base: v.base, base_source: v.base_source, contract_hash: v.contract_hash, failing: v.failing, blocked: v.blocked, measured: v.measured, ...(v.reused.length ? { reused: v.reused.map((x) => `${x.id}: ${reusedFrom(x)}`) } : {}) });
   return { ...json, evidence_seq: e.seq, report: path.join(dir, `${taskId}-latest.md`) };
 }
 

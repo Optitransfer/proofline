@@ -6,9 +6,10 @@ import { verifyChain, readLog } from '../src/evidence.mjs';
 
 const argv = process.argv.slice(2);
 const flags = {}; const pos = [];
+const SWITCHES = ['fresh']; // never take a value: `verify --fresh T` keeps T as the task
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
-  if (a.startsWith('--')) { const [k, v] = a.slice(2).split('='); if (v !== undefined) flags[k] = v; else if (argv[i + 1] && !argv[i + 1].startsWith('--')) flags[k] = argv[++i]; else flags[k] = true; }
+  if (a.startsWith('--')) { const [k, v] = a.slice(2).split('='); if (v !== undefined) flags[k] = v; else if (!SWITCHES.includes(k) && argv[i + 1] && !argv[i + 1].startsWith('--')) flags[k] = argv[++i]; else flags[k] = true; }
   else pos.push(a);
 }
 const root = flags.root ? flags.root : P.findRoot();
@@ -27,10 +28,12 @@ const HELP = `proofline — independent V&V and delivery controller
                                         --owner: only that owner's tasks and unowned ones
   brief <TASK> [--owner <name>] [--base <rev>]  brief for a task, with the base verify will use
                                         (refuses another owner's task)
-  verify <TASK> [--claims "line"] [--base <rev>]   run every check independently; prints corrective prompt
-  gate <TASK>|--all [--claims ...] [--base <rev>]  release decision PASS/FAIL/BLOCKED + report (.proofline/reports)
+  verify <TASK> [--claims "line"] [--base <rev>] [--fresh]   run every check independently; prints corrective prompt
+  gate <TASK>|--all [--claims ...] [--base <rev>] [--fresh]  release decision PASS/FAIL/BLOCKED + report (.proofline/reports)
                                         --base: the revision the task started from (needed in a fresh clone
                                         unless \`next\` pinned it or HEAD carries a Proofline-Base: trailer)
+                                        --fresh: run every check again, ignoring PASS results reused under
+                                        defaults.reuse_results
   report <TASK>                         latest gate report
   status [--owner <name>]               task + phase status, evidence chain
   evidence record <type> --data '{..}' | evidence verify | evidence log
@@ -60,7 +63,7 @@ try {
       const c = P.C.load(root);
       const ids = flags.all ? c.tasks.map((t) => t.id) : flags.ci ? (c.ci?.tasks || []) : [sub || P.activeTask(root)].filter(Boolean);
       if (!ids.length) { if (flags.ci) { const e = P.C.validate(c); print({ decision: e.length ? 'FAIL' : 'PASS', problems: e }, e.length ? e.join('\n') : 'contract valid; no ci.tasks'); process.exitCode = e.length ? 1 : 0; break; } throw new Error('which task? (proofline next)'); }
-      const outs = ids.map((id) => P.E.gate(root, id, { claims: claims(), base: base(), skipTypes: flags['skip-pushed'] || flags.ci ? ['pushed'] : [] }));
+      const outs = ids.map((id) => P.E.gate(root, id, { claims: claims(), base: base(), fresh: flags.fresh === true, skipTypes: flags['skip-pushed'] || flags.ci ? ['pushed'] : [] }));
       const worst = outs.some((o) => o.decision === 'BLOCKED') ? 'BLOCKED' : outs.some((o) => o.decision === 'FAIL') ? 'FAIL' : 'PASS';
       print(outs.length === 1 ? outs[0] : { decision: worst, gates: outs.map((o) => ({ task: o.task, decision: o.decision, failing: o.failing, blocked: o.blocked })) },
         outs.map((o) => `== ${o.task}: ${o.decision}\n  base: ${o.base_ref} = ${o.base?.slice(0, 8) || 'not found'} (${o.base_source})\n${o.results.map((r) => `  ${r.status.toUpperCase().padEnd(5)} ${r.id} [${r.type}] ${r.detail.split('\n')[0]}`).join('\n')}${o.forbidden.length ? '\n  forbidden: ' + o.forbidden.map((f) => `${f.rule}@${f.file}`).join(', ') : ''}\n  report: ${o.report}\n\n${o.corrective_prompt}`).join('\n\n') + `\n\nDECISION: ${worst}`);

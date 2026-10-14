@@ -32,6 +32,10 @@
 | Two builders share a contract with owners | `next --owner a` never returns a task owned by `b`; an owner outside `defaults.owners` fails validation |
 | Metric run while the machine's load per CPU is above `defaults.max_load_per_cpu` | `BLOCKED` (machine busy, with the numbers); no measured value recorded |
 | Commit adds or amends `proofline.json` with the default deny-list | No forbidden finding in the contract itself; the change is judged by the weakening check |
+| `defaults.reuse_results` on (`true`/`false`, default `false`; `defaults.reuse_max_age_h`, a positive number, default 24): `verify` then `gate` on one clean commit | A `command` or `metric` PASS runs once; the gate report lists it under Reused results as `reused from <time> (evidence entry <n>)`, and the gate entry says the same |
+| Same, with an uncommitted edit or untracked file, a new commit, `--fresh`, a changed env var the command names, a PASS older than `reuse_max_age_h`, or a log that no longer holds the recording entry intact with its hash | The check runs again |
+| Same, where the check FAILs, is flaky, is blocked or cannot run | Nothing is stored; it runs every time |
+| `reuse_results` left out or `false` | Every check runs every time; nothing is stored |
 
 ## Conformance fixture format
 

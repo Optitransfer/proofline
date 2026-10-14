@@ -89,6 +89,9 @@ export function validate(c) {
   if (c.defaults?.remote !== undefined && !isName(c.defaults.remote)) errs.push('defaults.remote must be a remote name (a string)');
   const maxLoad = c.defaults?.max_load_per_cpu;
   if (maxLoad !== undefined && !(typeof maxLoad === 'number' && maxLoad > 0)) errs.push('defaults.max_load_per_cpu must be a positive number');
+  const reuse = c.defaults?.reuse_results, maxAge = c.defaults?.reuse_max_age_h;
+  if (reuse !== undefined && typeof reuse !== 'boolean') errs.push('defaults.reuse_results must be true or false');
+  if (maxAge !== undefined && !(typeof maxAge === 'number' && maxAge > 0)) errs.push('defaults.reuse_max_age_h must be a positive number of hours');
   const owners = c.defaults?.owners;
   if (owners !== undefined && !(Array.isArray(owners) && owners.every(isName))) errs.push('defaults.owners must be a list of names');
   const ids = new Set();

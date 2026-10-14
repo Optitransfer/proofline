@@ -28,6 +28,7 @@ The exact schema will be versioned in implementation. Every record should suppor
 
 - Capture the exact revision against which each check ran.
 - A check run before a relevant change is stale for the changed behaviour unless freshness policy proves otherwise.
+- With `defaults.reuse_results` on, a `command` or `metric` PASS is recorded as a `result` entry, and a later verify or gate on the same HEAD with a clean tree may reuse it (key: verifier, HEAD, node version, the env vars the command names) for up to `reuse_max_age_h` hours. The reused result is read from that entry, only while it is in an intact chain with the hash the cache file stored, and the report names it: `reused from <time> (evidence entry <n>)`.
 - Preserve failed results after a later retry passes; final state may improve but history must not be rewritten.
 - Bound output size and execution time.
 - Redact secrets before persistence; do not assume command output is safe.
