@@ -15,20 +15,22 @@ const root = flags.root ? flags.root : P.findRoot();
 const json = !!flags.json;
 const print = (obj, text) => { process.stdout.write((json || text === undefined ? JSON.stringify(obj, null, 2) : text) + '\n'); };
 const code = (d) => (d === 'PASS' ? 0 : d === 'BLOCKED' ? 2 : 1);
+const owner = () => { if (flags.owner === true) throw new Error('--owner needs a name'); return flags.owner; };
 const claims = () => flags['claims-file'] ? fs.readFileSync(flags['claims-file'], 'utf8') : flags.claims === true ? fs.readFileSync(0, 'utf8') : flags.claims;
 
 const HELP = `proofline — independent V&V and delivery controller
   init [--no-hooks]                     create proofline.json, .proofline/, install git hooks
-  contract create --from spec.json      add a task contract (or --id --title [--phase] [--depends a,b] [--scope g1,g2])
+  contract create --from spec.json      add a task contract (or --id --title [--phase] [--owner n] [--depends a,b] [--scope g1,g2])
   contract validate | show
-  next                                  the single next task with its full brief (marks it active)
-  brief <TASK>                          brief for a task
+  next [--owner <name>]                 the single next task with its full brief (marks it active);
+                                        --owner: only that owner's tasks and unowned ones
+  brief <TASK> [--owner <name>]         brief for a task (refuses another owner's task)
   verify <TASK> [--claims "line"] [--base <rev>]   run every check independently; prints corrective prompt
   gate <TASK>|--all [--claims ...] [--base <rev>]  release decision PASS/FAIL/BLOCKED + report (.proofline/reports)
                                         --base: the revision the task started from (needed in a fresh clone
                                         unless \`next\` pinned it or HEAD carries a Proofline-Base: trailer)
   report <TASK>                         latest gate report
-  status                                task + phase status, evidence chain
+  status [--owner <name>]               task + phase status, evidence chain
   evidence record <type> --data '{..}' | evidence verify | evidence log
   hook pre-commit|pre-push              (used by git hooks)
   mcp                                   MCP server on stdio
@@ -40,7 +42,7 @@ try {
     case 'init': { const r = P.init(root, { hooks: !flags['no-hooks'] }); print(r, `initialised ${root}${r.made.map((m) => `\n  ${m}`).join('')}`); break; }
     case 'contract': {
       if (sub === 'create') {
-        const spec = flags.from ? JSON.parse(fs.readFileSync(flags.from, 'utf8')) : { id: flags.id, title: flags.title, phase: flags.phase, description: flags.description || '', depends_on: flags.depends ? String(flags.depends).split(',') : [], scope: flags.scope ? String(flags.scope).split(',') : undefined, criteria: [] };
+        const spec = flags.from ? JSON.parse(fs.readFileSync(flags.from, 'utf8')) : { id: flags.id, title: flags.title, phase: flags.phase, owner: owner(), description: flags.description || '', depends_on: flags.depends ? String(flags.depends).split(',') : [], scope: flags.scope ? String(flags.scope).split(',') : undefined, criteria: [] };
         const specs = Array.isArray(spec) ? spec : spec.tasks || [spec];
         const out = specs.map((s) => P.contractCreate(root, s));
         print(out, out.map((o) => `${o.task.id}: ${o.valid ? 'valid' : 'INCOMPLETE — ' + o.problems.join('; ')}`).join('\n'));
@@ -50,8 +52,8 @@ try {
       else { console.error(HELP); process.exitCode = 3; }
       break;
     }
-    case 'next': { const n = P.taskNext(root); print(n, n.brief || n.message); break; }
-    case 'brief': { const c = P.C.load(root); const t = c.tasks.find((x) => x.id === sub); if (!t) throw new Error(`unknown task ${sub}`); print({ brief: P.E.brief(c, t) }, P.E.brief(c, t)); break; }
+    case 'next': { const n = P.taskNext(root, { owner: owner() }); print(n, n.brief || n.message); break; }
+    case 'brief': { const b = P.taskBrief(root, sub, { owner: owner() }); print({ brief: b }, b); break; }
     case 'verify': case 'gate': {
       const c = P.C.load(root);
       const ids = flags.all ? c.tasks.map((t) => t.id) : flags.ci ? (c.ci?.tasks || []) : [sub || P.activeTask(root)].filter(Boolean);
@@ -65,7 +67,7 @@ try {
       break;
     }
     case 'report': { const r = P.report(root, sub); print(r, r.markdown || r.error); process.exitCode = r.error ? 1 : 0; break; }
-    case 'status': { const s = P.status(root); print(s, Object.entries(s.tasks).map(([k, v]) => `${k.padEnd(14)} ${v.status}`).join('\n') + '\n\n' + s.phases.map((p) => `${p.phase.padEnd(10)} ${p.verified}/${p.tasks}${p.open ? ' (open)' : ''}`).join('\n') + `\n\nevidence chain: ${s.chain.ok ? 'intact' : 'BROKEN'} (${s.chain.entries ?? '?'} entries); active: ${s.active || '-'}`); break; }
+    case 'status': { const s = P.status(root, { owner: owner() }); print(s, Object.entries(s.tasks).map(([k, v]) => `${k.padEnd(14)} ${v.status}`).join('\n') + '\n\n' + s.phases.map((p) => `${p.phase.padEnd(10)} ${p.verified}/${p.tasks}${p.open ? ' (open)' : ''}`).join('\n') + `\n\nevidence chain: ${s.chain.ok ? 'intact' : 'BROKEN'} (${s.chain.entries ?? '?'} entries); active: ${s.active || '-'}`); break; }
     case 'evidence': {
       if (sub === 'record') print(P.evidenceRecord(root, pos[2] || 'note', flags.data ? JSON.parse(flags.data) : {}));
       else if (sub === 'verify') { const v = verifyChain(root); print(v, v.ok ? `chain intact: ${v.entries} entries, head ${v.head.slice(0, 16)}` : `CHAIN BROKEN at ${v.at}: ${v.reason}`); process.exitCode = v.ok ? 0 : 2; }

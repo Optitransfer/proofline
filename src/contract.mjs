@@ -54,25 +54,42 @@ export function skeleton(project = path.basename(process.cwd())) {
 }
 
 /** Turn a task description into a contract task. Criteria that cannot be machine-verified are flagged so freeze refuses. */
-export function makeTask({ id, title, phase = 'implement', depends_on = [], requirements = [], description = '', scope = ['**'], criteria = [], stop_rules = [] }) {
+export function makeTask({ id, title, phase = 'implement', owner, depends_on = [], requirements = [], description = '', scope = ['**'], criteria = [], stop_rules = [] }) {
   if (!id || !title) throw new Error('task needs id and title');
   return {
-    id, title, phase, depends_on, requirements, description,
+    id, title, phase, ...(owner !== undefined ? { owner } : {}), depends_on, requirements, description,
     scope: { allow: scope },
     criteria: criteria.map((c, i) => ({ id: c.id || `${id}-AC${String(i + 1).padStart(2, '0')}`, mandatory: c.mandatory !== false, ...c })),
     stop_rules: stop_rules.length ? stop_rules : ['If any metric misses its threshold: STOP, report the measured number, a per-stage trace and file:line. Do not start the next task.'],
   };
 }
 
+const isName = (x) => typeof x === 'string' && x.trim() !== '';
+
+/** A task belongs to an owner's lane when it is theirs or has no owner. No owner given: every task. */
+export const inLane = (t, owner) => !owner || t.owner === undefined || t.owner === owner;
+
+/** An --owner name must be in defaults.owners when the contract has that list. */
+export function checkOwner(c, owner) {
+  if (owner === undefined) return;
+  if (!isName(owner)) throw new Error('--owner needs a name');
+  const owners = c.defaults?.owners;
+  if (Array.isArray(owners) && !owners.includes(owner)) throw new Error(`owner ${owner} is not in defaults.owners (${owners.join(', ')})`);
+}
+
 /** Validation: returns list of problems (empty == valid). */
 export function validate(c) {
   const errs = [];
   if (c.schema !== SCHEMA) errs.push(`schema must be ${SCHEMA}`);
+  const owners = c.defaults?.owners;
+  if (owners !== undefined && !(Array.isArray(owners) && owners.every(isName))) errs.push('defaults.owners must be a list of names');
   const ids = new Set();
   for (const t of c.tasks || []) {
     if (ids.has(t.id)) errs.push(`duplicate task id ${t.id}`);
     ids.add(t.id);
     if (!PHASES.includes(t.phase)) errs.push(`${t.id}: unknown phase ${t.phase}`);
+    if (t.owner !== undefined && !isName(t.owner)) errs.push(`${t.id}: owner must be a name`);
+    else if (t.owner !== undefined && Array.isArray(owners) && !owners.includes(t.owner)) errs.push(`${t.id}: owner ${t.owner} is not in defaults.owners (${owners.join(', ')})`);
     if (!t.criteria?.length) errs.push(`${t.id}: no acceptance criteria`);
     for (const a of t.criteria || []) {
       const v = a.verifier;

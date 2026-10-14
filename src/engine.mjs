@@ -190,11 +190,21 @@ export function phaseStatus(root, c = C.load(root)) {
   });
 }
 
-export function next(root) {
+/**
+ * The next task. With `owner`, only that owner's tasks and unowned ones are handed out, and the phase gate
+ * applies to that lane; depends_on still waits on any owner's task.
+ */
+export function next(root, { owner } = {}) {
   const c = C.load(root);
+  C.checkOwner(c, owner);
   const st = taskStatus(root, c);
-  const order = C.topo(c.tasks) || c.tasks;
-  const firstOpenPhase = C.PHASES.find((p) => c.tasks.some((t) => t.phase === p && st[t.id].status !== 'verified'));
+  const lane = c.tasks.filter((t) => C.inLane(t, owner));
+  const order = (C.topo(c.tasks) || c.tasks).filter((t) => C.inLane(t, owner));
+  const firstOpenPhase = C.PHASES.find((p) => lane.some((t) => t.phase === p && st[t.id].status !== 'verified'));
+  if (!firstOpenPhase && owner) {
+    const others = c.tasks.filter((t) => !C.inLane(t, owner) && st[t.id].status !== 'verified').map((t) => `${t.id} (${t.owner})`);
+    return { done: true, owner, message: `Every task for ${owner} and every unowned task is verified.${others.length ? ` Open for other owners: ${others.join(', ')}.` : ' Run `proofline gate --all` before release.'}` };
+  }
   if (!firstOpenPhase) return { done: true, message: 'All tasks verified. Run `proofline gate --all` before release.' };
   for (const t of order) {
     if (st[t.id].status === 'verified') continue;
@@ -204,7 +214,7 @@ export function next(root) {
     return { done: false, task: t.id, phase: t.phase, status: st[t.id].status, brief: brief(c, t, st) };
   }
   const waiting = order.filter((t) => st[t.id].status !== 'verified').map((t) => `${t.id} (waits on ${(t.depends_on || []).filter((d) => st[d]?.status !== 'verified').join(', ') || 'phase gate'})`);
-  return { done: false, task: null, message: `No task is unblocked in phase ${firstOpenPhase}: ${waiting.join('; ')}` };
+  return { done: false, task: null, message: `No task${owner ? ` for ${owner}` : ''} is unblocked in phase ${firstOpenPhase}: ${waiting.join('; ')}` };
 }
 
 export function brief(c, t, st = {}) {
@@ -225,7 +235,7 @@ export function brief(c, t, st = {}) {
     return `${i + 1}. **${a.id}**${a.mandatory === false ? ' (advisory)' : ''}: ${a.statement || ''}\n   Verifier (${x.type}): ${how}`;
   }).join('\n');
   const f = { ...C.DEFAULT_FORBIDDEN, ...(c.forbidden || {}) };
-  return [`# TASK ${t.id}: ${t.title}`, `Phase: ${t.phase}. Depends on: ${(t.depends_on || []).join(', ') || 'none'} (all verified). Requirements: ${(t.requirements || []).join(', ') || '-'}.`, '',
+  return [`# TASK ${t.id}: ${t.title}`, ...(t.owner !== undefined ? [`Owner: ${t.owner}.`] : []), `Phase: ${t.phase}. Depends on: ${(t.depends_on || []).join(', ') || 'none'} (all verified). Requirements: ${(t.requirements || []).join(', ') || '-'}.`, '',
     t.description || '', '', `## Scope (allowed paths)\n${t.scope.allow.map((s) => `- ${s}`).join('\n')}`, '',
     `## Acceptance criteria (each is checked independently; your report is not evidence)\n${crit}`, '',
     '## Mandatory loop', '1. Write the failing test(s) first and run them: paste the failing output.', '2. Implement the cause-level fix on the default path (wired in, default config).', `3. \`proofline verify ${t.id}\` → fix until PASS. Read the corrective instruction it prints.`, `4. Commit (one task per commit), push to ${c.defaults?.branch || 'main'} with hooks on.`, `5. \`proofline gate ${t.id} --claims "<your report line>"\` and paste the report.`, '',

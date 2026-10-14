@@ -29,6 +29,7 @@
 | Gate in a fresh clone with no pinned base, where the default base is HEAD | `BLOCKED` with a corrective naming `--base`; never a pass on an empty diff |
 | Same gate with `--base <parent>` and a change outside the task's scope | Scope-drift finding |
 | Repository already has a pre-push hook that refuses the push | After `init` the push is still refused by that hook; a passing hook hands over to the gate |
+| Two builders share a contract with owners | `next --owner a` never returns a task owned by `b`; an owner outside `defaults.owners` fails validation |
 | Commit adds or amends `proofline.json` with the default deny-list | No forbidden finding in the contract itself; the change is judged by the weakening check |
 
 ## Conformance fixture format

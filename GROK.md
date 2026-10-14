@@ -4,7 +4,7 @@ Proofline decides whether your work is done. Your report is a claim; Proofline r
 
 ## Loop (every task, no exceptions)
 
-1. `proofline next` (MCP: `task_next`). Work only on the task it returns. Read the whole brief.
+1. `proofline next` (MCP: `task_next`). Work only on the task it returns. Read the whole brief. If the contract has owners, add `--owner <your name>` (MCP: `owner`) so you only get your tasks and unowned ones.
 2. Write the failing test(s) first. Run them and keep the failing output.
 3. Implement the root-cause fix **on the default path** (wired in, default config). Code that is built but unreachable does not count.
 4. `proofline verify <TASK>` (MCP: `verify`). Read the corrective instruction. Fix and repeat until `DECISION: PASS`.

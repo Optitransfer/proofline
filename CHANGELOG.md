@@ -20,6 +20,7 @@ All notable project changes are recorded here. Dates use ISO 8601 (`YYYY-MM-DD`)
 - A verify or gate with no pinned base, where the default base is HEAD (a fresh clone after the push), is BLOCKED instead of passing every diff check on an empty diff (#5).
 
 ### Added
+- Optional `owner` on a task and `defaults.owners` in the contract (validated); `--owner <name>` on `next`, `status` and `brief` (MCP: `task_next` and `status`). `next --owner` hands out that owner's tasks and unowned ones, never another owner's (#2).
 - `--base <rev>` on `verify` and `gate` (MCP: `base`), an optional `Proofline-Base:` commit trailer, and the base source (`--base`, contract, pinned at start, commit trailer, default) in every report. The `next` brief prints the pinned base (#5).
 - Initial product scope, requirements, architecture, lifecycle, evidence model, security posture, verification strategy, delivery pipeline, roadmap, and dependency map.
 - Initial Mermaid diagrams, ADRs, task-contract example, and project templates.

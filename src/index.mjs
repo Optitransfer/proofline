@@ -88,11 +88,11 @@ export function contractCreate(root, spec) {
   return { task: t, valid: errs.length === 0, problems: errs };
 }
 
-export function taskNext(root) {
-  const n = E.next(root);
+export function taskNext(root, { owner } = {}) {
+  const n = E.next(root, { owner });
   if (n.task && n.status === 'not_started') { const c = C.load(root);
     const base = resolveBase(root, c.defaults?.base || 'origin/main') || git(['rev-parse', 'HEAD'], root).out;
-    record(root, 'task_started', { task: n.task, base }); n.status = 'in_progress'; }
+    record(root, 'task_started', { task: n.task, base, ...(owner ? { owner } : {}) }); n.status = 'in_progress'; }
   if (n.task) {
     fs.writeFileSync(path.join(root, '.proofline', 'active'), n.task + '\n');
     n.base = readLog(root).find((e) => e.type === 'task_started' && e.data.task === n.task)?.data.base;
@@ -108,9 +108,22 @@ export function evidenceRecord(root, type, data, actor = 'agent') {
   return record(root, `agent_${type}`, data, { actor });
 }
 
-export function status(root) {
+/** Task and phase status; with `owner`, that owner's tasks and unowned ones (phases counted over them). */
+export function status(root, { owner } = {}) {
+  const all = C.load(root);
+  C.checkOwner(all, owner);
+  const c = owner ? { ...all, tasks: all.tasks.filter((t) => C.inLane(t, owner)) } : all;
+  return { project: c.project, ...(owner ? { owner } : {}), tasks: E.taskStatus(root, c), phases: E.phaseStatus(root, c), chain: verifyChain(root), active: activeTask(root) };
+}
+
+/** Brief for one task; with `owner`, another owner's task is refused. */
+export function taskBrief(root, id, { owner } = {}) {
   const c = C.load(root);
-  return { project: c.project, tasks: E.taskStatus(root, c), phases: E.phaseStatus(root, c), chain: verifyChain(root), active: activeTask(root) };
+  C.checkOwner(c, owner);
+  const t = c.tasks.find((x) => x.id === id);
+  if (!t) throw new Error(`unknown task ${id}`);
+  if (!C.inLane(t, owner)) throw new Error(`task ${id} is owned by ${t.owner}, not ${owner}`);
+  return E.brief(c, t);
 }
 
 export function report(root, taskId) {
