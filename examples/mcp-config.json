@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "proofline": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/proofline/bin/proofline.mjs", "mcp", "--root", "/ABSOLUTE/PATH/TO/target-repo"]
+    }
+  }
+}

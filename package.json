@@ -1,0 +1,16 @@
+{
+  "name": "proofline",
+  "version": "0.1.0",
+  "description": "Independent verification and delivery gates for AI agents.",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "bin": { "proofline": "bin/proofline.mjs" },
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test",
+    "demo": "node examples/demo/demo.mjs",
+    "self-gate": "node bin/proofline.mjs gate PL-SELF --skip-pushed",
+    "mcp": "node bin/proofline.mjs mcp"
+  }
+}

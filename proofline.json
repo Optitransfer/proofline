@@ -1,0 +1,165 @@
+{
+  "schema": "proofline/1",
+  "project": "proofline",
+  "owner_rules": [
+    "Done means ALL evidence: implemented as specified (task id), a test that FAILED before and passes now, suites green, measured number vs target, docs regenerated, committed AND pushed to main.",
+    "Never defer: no \"later\", \"follow-up\", \"out of scope\". If blocked: what blocks, what you tried, what you need; then continue with the next task.",
+    "Root cause, then fix: file:line + mechanism. No weakening tests, raising timeouts, skips, relaxed assertions.",
+    "No silent scope cuts: never lower targets, caps or test sizes without owner approval.",
+    "Never bypass guards: no --no-verify, no bypass env vars, no skip flags.",
+    "Deliver continuously: one task per commit, pushed to main as it goes green.",
+    "Honest reporting: TASK-ID | status | commit | tests | measured vs target | missing."
+  ],
+  "defaults": {
+    "base": "origin/main",
+    "branch": "main",
+    "flaky_reruns": 1,
+    "max_corrective_cycles": 3,
+    "regression_tolerance_pct": 20
+  },
+  "forbidden": {
+    "test_skip_only": true,
+    "timeout_raise": true,
+    "assertion_removal": true,
+    "test_file_deletion": true,
+    "no_verify": true,
+    "bypass_env": [
+      "HIVEVAULT_ALLOW_PUBLIC_PUSH",
+      "SKIP_HOOKS",
+      "HUSKY=0",
+      "PROOFLINE_SKIP",
+      "CI_SKIP"
+    ],
+    "protected_values": [],
+    "ignore_paths": [
+      "src/**",
+      "test/**",
+      "docs/**",
+      "*.md",
+      "examples/demo/**",
+      "hooks/**"
+    ]
+  },
+  "baseline": {
+    "metrics": {}
+  },
+  "phases": [
+    {
+      "id": "intake"
+    },
+    {
+      "id": "design"
+    },
+    {
+      "id": "plan"
+    },
+    {
+      "id": "implement"
+    },
+    {
+      "id": "verify"
+    },
+    {
+      "id": "integrate"
+    },
+    {
+      "id": "release"
+    },
+    {
+      "id": "monitor"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "PL-SELF",
+      "title": "Proofline verifies its own repo",
+      "phase": "verify",
+      "depends_on": [],
+      "requirements": [],
+      "description": "",
+      "scope": {
+        "allow": [
+          "**"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-SELF-AC01",
+          "mandatory": true,
+          "statement": "Own test suite green: ≥ 38 tests, none skipped, none hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "node --test",
+            "min_tests": 38,
+            "max_skipped": 0
+          }
+        },
+        {
+          "id": "PL-SELF-AC02",
+          "mandatory": true,
+          "statement": "Demo shows FAIL (claim without evidence) then PASS",
+          "verifier": {
+            "type": "command",
+            "cmd": "node examples/demo/demo.mjs --quiet"
+          }
+        },
+        {
+          "id": "PL-SELF-AC03",
+          "mandatory": true,
+          "statement": "Worked hivevault contract is valid",
+          "verifier": {
+            "type": "command",
+            "cmd": "node bin/proofline.mjs contract validate --root examples/hivevault-fastpath"
+          }
+        },
+        {
+          "id": "PL-SELF-AC04",
+          "mandatory": true,
+          "statement": "gate is wired into the CLI default path",
+          "verifier": {
+            "type": "wiring",
+            "entry": "bin/proofline.mjs",
+            "symbol": "gate"
+          }
+        },
+        {
+          "id": "PL-SELF-AC05",
+          "mandatory": true,
+          "statement": "verifyTask reachable from the MCP server",
+          "verifier": {
+            "type": "wiring",
+            "entry": "src/mcp.mjs",
+            "symbol": "verifyTask"
+          }
+        },
+        {
+          "id": "PL-SELF-AC06",
+          "mandatory": true,
+          "statement": "Hooks read no bypass variable",
+          "verifier": {
+            "type": "grep",
+            "file": "src/index.mjs",
+            "pattern": "process\\.env\\.(PROOFLINE|SKIP)",
+            "must": "absent"
+          }
+        },
+        {
+          "id": "PL-SELF-AC07",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If any metric misses its threshold: STOP, report the measured number, a per-stage trace and file:line. Do not start the next task."
+      ]
+    }
+  ],
+  "ci": {
+    "tasks": [
+      "PL-SELF"
+    ]
+  }
+}

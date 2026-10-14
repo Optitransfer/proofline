@@ -1,0 +1,13 @@
+# Runtime evidence and local state
+.proofline/
+.proofline-evidence/
+*.evidence.local.json
+.env
+.env.*
+!.env.example
+
+# Tooling
+node_modules/
+dist/
+coverage/
+.DS_Store

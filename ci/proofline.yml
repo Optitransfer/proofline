@@ -1,0 +1,26 @@
+name: proofline
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: git config --global user.email ci@proofline.local && git config --global user.name ci
+      - name: Proofline self-gate (independent re-verification; hooks cannot be skipped here)
+        run: node bin/proofline.mjs gate --ci
+      - name: Upload evidence report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proofline-report
+          path: .proofline/reports/

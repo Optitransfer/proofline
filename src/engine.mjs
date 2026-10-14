@@ -1,0 +1,199 @@
+// verify → steer → gate, plus project-cycle planning (status, next, brief).
+import fs from 'node:fs';
+import path from 'node:path';
+import { git, writeJson, sha256 } from './util.mjs';
+import * as C from './contract.mjs';
+import { verifiers, resolveBase, changedFiles } from './checks.mjs';
+import { scanForbidden } from './forbidden.mjs';
+import { parseClaims, checkClaim } from './claims.mjs';
+import { record, readLog, verifyChain } from './evidence.mjs';
+
+export const KNOWN_LIMITS = [
+  'Proofline runs on the same machine as the agent: an agent with shell access could edit .proofline/ or proofline.json. The hash chain makes edits detectable, contract weakening vs the base revision is flagged, and CI re-verifies from a clean checkout; protect proofline.json with CODEOWNERS/branch protection for a hard boundary.',
+  'git hooks can be skipped client-side with --no-verify; Proofline cannot prevent that locally. The CI workflow re-runs the gate on every push, so a skipped hook still fails visibly.',
+  'Forbidden-pattern and wiring checks are static heuristics (regex + static import graph). Dynamic imports with computed paths and dependency injection are not followed.',
+  'Red-green replays the new test against the base revision in a git worktree. Tests needing services or build steps need a "setup" command.',
+  'Metric checks trust the bench script committed in the repo; a changed bench command is flagged as a contract change, but the bench itself is code under review.',
+  'Contracts are JSON (zero dependencies). YAML is not parsed.',
+];
+
+function taskById(c, id) { const t = c.tasks.find((x) => x.id === id); if (!t) throw new Error(`unknown task ${id}`); return t; }
+
+export function headInfo(root) {
+  const head = git(['rev-parse', 'HEAD'], root).out || null;
+  const dirty = git(['diff', 'HEAD'], root).out + git(['ls-files', '--others', '--exclude-standard'], root).out;
+  return { head, tree: sha256(dirty) };
+}
+
+export function verifyTask(root, taskId, { claims, only, skipTypes = [] } = {}) {
+  const c = C.load(root);
+  const t = taskById(c, taskId);
+  const errs = C.validate(c);
+  const started = readLog(root).find((e) => e.type === 'task_started' && e.data.task === t.id);
+  // Base is pinned when the task starts, so pushing the work does not move the goalposts.
+  const baseRef = t.base || started?.data.base || c.defaults?.base || 'origin/main';
+  const base = resolveBase(root, baseRef);
+  const ctx = { root, contract: c, task: t, base, changed: base ? changedFiles(root, base) : new Map(), measured: {}, baseline: c.baseline?.metrics, tolerancePct: c.defaults?.regression_tolerance_pct, flakyReruns: c.defaults?.flaky_reruns ?? 1 };
+  const results = [];
+  for (const a of t.criteria) {
+    if (only && !only.includes(a.id)) continue;
+    if (skipTypes.includes(a.verifier.type)) continue;
+    let r;
+    try { r = verifiers[a.verifier.type](a.verifier, ctx); } catch (e) { r = { status: 'error', detail: `verifier crashed: ${e.message}` }; }
+    results.push({ id: a.id, statement: a.statement, mandatory: a.mandatory !== false, type: a.verifier.type, ...r });
+  }
+  const forbidden = scanForbidden(root, base, { ...C.DEFAULT_FORBIDDEN, ...(c.forbidden || {}) });
+  let baseContract = null;
+  if (base) { const s = git(['show', `${base}:proofline.json`], root); if (s.ok) try { baseContract = JSON.parse(s.out); } catch {} }
+  const weak = C.weakenings(baseContract, c);
+  const chain = verifyChain(root);
+
+  const blocked = [], failing = [];
+  if (errs.length) blocked.push(...errs.map((e) => `contract invalid: ${e}`));
+  if (!base) blocked.push(`base revision "${baseRef}" not found`);
+  if (!chain.ok) blocked.push(`evidence log tampered at entry ${chain.at}: ${chain.reason}`);
+  for (const w of weak) blocked.push(`contract weakened vs base (needs owner approval): ${w}`);
+  for (const r of results) {
+    if (r.status === 'error') blocked.push(`${r.id}: could not run: ${r.detail}`);
+    else if (r.mandatory && r.status !== 'pass') failing.push(`${r.id} ${r.status.toUpperCase()}: ${r.detail}`);
+  }
+  for (const f of forbidden) failing.push(`forbidden ${f.rule} in ${f.file}: ${f.line}`);
+  let decision = blocked.length ? 'BLOCKED' : failing.length ? 'FAIL' : 'PASS';
+
+  const metricLabels = {};
+  for (const a of t.criteria) if (a.verifier.type === 'metric') metricLabels[a.verifier.name || a.verifier.key] = a.verifier.labels || [];
+  const claimResults = [];
+  if (claims) {
+    const res = { decision, failing: [...blocked, ...failing], measured: ctx.measured, metricLabels };
+    const needPush = t.criteria.some((a) => a.verifier.type === 'pushed');
+    for (const cl of parseClaims(claims, [t.id])) claimResults.push(checkClaim(root, cl, res, { requirePushed: needPush, branch: c.defaults?.branch }));
+    for (const cr of claimResults) if (!cr.ok) failing.push(...cr.issues.map((i) => `claim mismatch: ${i}`));
+    if (claimResults.some((x) => !x.ok) && decision === 'PASS') decision = 'FAIL';
+  }
+  const hi = headInfo(root);
+  return { task: t.id, title: t.title, phase: t.phase, decision, base, base_ref: baseRef, ...hi, contract_hash: C.contractHash(c), results, forbidden, weakenings: weak, blocked, failing, measured: ctx.measured, claims: claimResults, changed: [...ctx.changed.keys()], ts: new Date().toISOString() };
+}
+
+/** Corrective prompt tied to each failed criterion. */
+export function steer(v, c) {
+  const t = taskById(c, v.task);
+  if (v.decision === 'PASS') return `${v.task}: PASS on ${v.head?.slice(0, 8)}. Commit, push to ${c.defaults?.branch || 'main'}, then report:\n${v.task} | done | <hash> | <tests> | ${Object.entries(v.measured).map(([k, x]) => `${k}=${x}`).join(', ') || '-'} | -\nThen call task_next.`;
+  const L = [`PROOFLINE CORRECTIVE INSTRUCTION — ${v.task} (${t.title}) — gate ${v.decision}`, `Revision ${v.head?.slice(0, 8)} vs base ${v.base?.slice(0, 8) || v.base_ref}. Do NOT report this task as done. Fix in this order:`, ''];
+  let n = 1;
+  for (const b of v.blocked) L.push(`${n++}. BLOCKED: ${b}\n   Next step: resolve the blocker (restore the contract, commit the missing rig/tool, or ask the owner). Do not work around it.`);
+  for (const r of v.results.filter((x) => x.mandatory && x.status !== 'pass' && x.status !== 'error')) {
+    const a = t.criteria.find((x) => x.id === r.id);
+    const how = {
+      command: () => `Run \`${a.verifier.cmd}\`. Find the root cause of each failure (file:line + mechanism) and fix the cause. Re-run until exit ${a.verifier.expect_exit ?? 0}.`,
+      test_red_green: () => `The test ${a.verifier.test_file} must FAIL on the base and PASS now. If it passes on base it does not test the change: assert the outcome (what), not the mechanism (how).`,
+      test_exists: () => `Write ${a.verifier.test_file}${a.verifier.test_name ? ` containing "${a.verifier.test_name}"` : ''}.`,
+      metric: () => `Run \`${a.verifier.cmd}\` and get a per-stage trace of where the time goes. Target ${a.verifier.key} ${a.verifier.op} ${a.verifier.value}. Do not change the threshold or the bench.`,
+      grep: () => `Make ${a.verifier.file} ${a.verifier.must === 'absent' ? 'no longer contain' : 'contain'} /${a.verifier.pattern}/${a.verifier.why ? ` (${a.verifier.why})` : ''}.`,
+      wiring: () => `Call ${a.verifier.symbol} from the default path starting at ${a.verifier.entry}. Code that is built but not reachable does not count.`,
+      scope: () => `Revert changes outside scope or ask the owner to amend the contract.`,
+      docs: () => `Run \`${a.verifier.cmd}\` and commit the regenerated ${a.verifier.paths.join(', ')}.`,
+      pushed: () => `Commit everything and \`git push origin ${c.defaults?.branch || 'main'}\` (hooks on; never --no-verify).`,
+      file_exists: () => `Create ${a.verifier.path}.`,
+    }[a.verifier.type]();
+    L.push(`${n++}. ${r.id} [${r.type}] ${r.status.toUpperCase()}: ${a.statement || ''}\n   Evidence: ${r.detail.split('\n')[0]}\n   Next step: ${how}`);
+  }
+  for (const f of v.forbidden) L.push(`${n++}. FORBIDDEN ${f.rule} in ${f.file}: ${f.line}\n   Why: ${f.why}. Next step: revert it and fix the underlying cause.`);
+  for (const cr of v.claims.filter((x) => !x.ok)) L.push(`${n++}. CLAIM REJECTED: "${cr.claim}"\n   ${cr.issues.join('\n   ')}\n   Next step: report only what the evidence shows.`);
+  L.push('', 'STOP RULES:', ...t.stop_rules.map((s) => `- ${s}`), '- After fixing, call verify again. Max corrective cycles: ' + (c.defaults?.max_corrective_cycles ?? 3) + '; after that report BLOCKED with root cause, what you tried, what you need.');
+  return L.join('\n');
+}
+
+function reportMd(v, c, prompt) {
+  const row = (r) => `| ${r.id} | ${r.type} | ${r.mandatory ? 'yes' : 'no'} | ${r.status.toUpperCase()} | ${r.detail.split('\n')[0].replace(/\|/g, '\\|')} |`;
+  return [`# Proofline gate: ${v.task} — **${v.decision}**`, '', `- Task: ${v.title} (phase ${v.phase})`, `- Revision: ${v.head} (tree ${v.tree.slice(0, 12)})`, `- Base: ${v.base_ref} = ${v.base}`, `- Contract hash: ${v.contract_hash}`, `- Time: ${v.ts}`, '',
+    '## Acceptance criteria', '', '| ID | Verifier | Mandatory | Result | Evidence |', '|---|---|---|---|---|', ...v.results.map(row), '',
+    '## Measured', '', ...(Object.keys(v.measured).length ? Object.entries(v.measured).map(([k, x]) => `- ${k}: ${x}`) : ['- none']), '',
+    '## Forbidden actions', '', ...(v.forbidden.length ? v.forbidden.map((f) => `- ${f.rule} in ${f.file}: \`${f.line}\` (${f.why})`) : ['- none detected']), '',
+    '## Blockers', '', ...(v.blocked.length ? v.blocked.map((b) => `- ${b}`) : ['- none']), '',
+    '## Claims vs evidence', '', ...(v.claims.length ? v.claims.map((x) => `- ${x.ok ? 'OK' : 'REJECTED'}: \`${x.claim}\`${x.ok ? '' : '\n  - ' + x.issues.join('\n  - ')}`) : ['- no claim submitted']), '',
+    `## Scope (${v.changed.length} changed files)`, '', ...v.changed.slice(0, 50).map((f) => `- ${f}`), '',
+    '## Corrective instruction', '', '```', prompt, '```', '',
+    '## Status vocabulary', '', '- PASS: every mandatory criterion passed on this exact revision with fresh evidence; no forbidden action; claims match.', '- FAIL: a mandatory criterion failed or was flaky, a forbidden action was found, or a claim contradicts the evidence.', '- BLOCKED: a check could not run, the contract was weakened, or the evidence log was tampered with. Needs the owner.', '',
+    '## Known limits', '', ...KNOWN_LIMITS.map((k) => `- ${k}`), ''].join('\n');
+}
+
+export function gate(root, taskId, opts = {}) {
+  const c = C.load(root);
+  if (opts.claims) record(root, 'claim', { task: taskId, text: opts.claims }, { actor: 'agent' });
+  const v = verifyTask(root, taskId, opts);
+  const prompt = steer(v, c);
+  const dir = path.join(root, '.proofline', 'reports');
+  const stamp = v.ts.replace(/[:.]/g, '-');
+  const json = { ...v, corrective_prompt: prompt, known_limits: KNOWN_LIMITS };
+  writeJson(path.join(dir, `${taskId}-${stamp}.json`), json);
+  fs.writeFileSync(path.join(dir, `${taskId}-${stamp}.md`), reportMd(v, c, prompt));
+  writeJson(path.join(dir, `${taskId}-latest.json`), json);
+  fs.writeFileSync(path.join(dir, `${taskId}-latest.md`), reportMd(v, c, prompt));
+  const e = record(root, 'gate', { task: taskId, decision: v.decision, head: v.head, tree: v.tree, contract_hash: v.contract_hash, failing: v.failing, blocked: v.blocked, measured: v.measured });
+  return { ...json, evidence_seq: e.seq, report: path.join(dir, `${taskId}-latest.md`) };
+}
+
+// ---------- project cycle ----------
+export function taskStatus(root, c = C.load(root)) {
+  const log = readLog(root);
+  const st = {};
+  for (const t of c.tasks) st[t.id] = { status: 'not_started' };
+  for (const e of log) {
+    if (e.type === 'task_started' && st[e.data.task]?.status === 'not_started') st[e.data.task] = { status: 'in_progress' };
+    if (e.type === 'gate' && st[e.data.task]) st[e.data.task] = { status: e.data.decision === 'PASS' ? 'verified' : e.data.decision === 'BLOCKED' ? 'blocked' : 'failed', head: e.data.head, seq: e.seq };
+  }
+  return st;
+}
+
+export function phaseStatus(root, c = C.load(root)) {
+  const st = taskStatus(root, c);
+  return C.PHASES.map((p) => {
+    const ts = c.tasks.filter((t) => t.phase === p);
+    return { phase: p, tasks: ts.length, verified: ts.filter((t) => st[t.id].status === 'verified').length, open: ts.length > 0 && ts.some((t) => st[t.id].status !== 'verified') };
+  });
+}
+
+export function next(root) {
+  const c = C.load(root);
+  const st = taskStatus(root, c);
+  const order = C.topo(c.tasks) || c.tasks;
+  const firstOpenPhase = C.PHASES.find((p) => c.tasks.some((t) => t.phase === p && st[t.id].status !== 'verified'));
+  if (!firstOpenPhase) return { done: true, message: 'All tasks verified. Run `proofline gate --all` before release.' };
+  for (const t of order) {
+    if (st[t.id].status === 'verified') continue;
+    if (t.phase !== firstOpenPhase) continue; // phase gate: earlier phases must be fully verified
+    const deps = (t.depends_on || []).filter((d) => st[d]?.status !== 'verified');
+    if (deps.length) continue;
+    return { done: false, task: t.id, phase: t.phase, status: st[t.id].status, brief: brief(c, t, st) };
+  }
+  const waiting = order.filter((t) => st[t.id].status !== 'verified').map((t) => `${t.id} (waits on ${(t.depends_on || []).filter((d) => st[d]?.status !== 'verified').join(', ') || 'phase gate'})`);
+  return { done: false, task: null, message: `No task is unblocked in phase ${firstOpenPhase}: ${waiting.join('; ')}` };
+}
+
+export function brief(c, t, st = {}) {
+  const v = (a) => a.verifier;
+  const crit = t.criteria.map((a, i) => {
+    const x = v(a); const how = {
+      command: () => `run \`${x.cmd}\` → exit ${x.expect_exit ?? 0}${x.max_skipped !== undefined ? `, ≤ ${x.max_skipped} skipped` : ''}${x.min_tests ? `, ≥ ${x.min_tests} tests` : ''}, no hung/cancelled tests`,
+      test_red_green: () => `write \`${x.test_file}\`${x.test_name ? ` ("${x.test_name}")` : ''} FIRST; Proofline replays it on the base revision where it must FAIL, then on your tree where it must PASS (\`${x.cmd}\`)`,
+      test_exists: () => `\`${x.test_file}\` exists${x.test_name ? ` with "${x.test_name}"` : ''}`,
+      metric: () => `\`${x.cmd}\` → \`${x.key}\` ${x.op} ${x.value}${c.baseline?.metrics?.[x.name || x.key] !== undefined ? ` (baseline ${c.baseline.metrics[x.name || x.key]})` : ''}`,
+      grep: () => `${x.file} ${x.must === 'absent' ? 'must not contain' : 'must contain'} /${x.pattern}/${x.why ? ` — ${x.why}` : ''}`,
+      wiring: () => `\`${x.symbol}\` must be called on the default path from ${x.entry}`,
+      scope: () => `only change: ${(x.allow || t.scope.allow).join(', ')}`,
+      docs: () => `\`${x.cmd}\` leaves no diff in ${x.paths.join(', ')}`,
+      pushed: () => `committed, tree clean, HEAD == origin/${c.defaults?.branch || 'main'}`,
+      file_exists: () => `${x.path} exists`,
+    }[x.type]();
+    return `${i + 1}. **${a.id}**${a.mandatory === false ? ' (advisory)' : ''}: ${a.statement || ''}\n   Verifier (${x.type}): ${how}`;
+  }).join('\n');
+  const f = { ...C.DEFAULT_FORBIDDEN, ...(c.forbidden || {}) };
+  return [`# TASK ${t.id}: ${t.title}`, `Phase: ${t.phase}. Depends on: ${(t.depends_on || []).join(', ') || 'none'} (all verified). Requirements: ${(t.requirements || []).join(', ') || '-'}.`, '',
+    t.description || '', '', `## Scope (allowed paths)\n${t.scope.allow.map((s) => `- ${s}`).join('\n')}`, '',
+    `## Acceptance criteria (each is checked independently; your report is not evidence)\n${crit}`, '',
+    '## Mandatory loop', '1. Write the failing test(s) first and run them: paste the failing output.', '2. Implement the cause-level fix on the default path (wired in, default config).', `3. \`proofline verify ${t.id}\` → fix until PASS. Read the corrective instruction it prints.`, `4. Commit (one task per commit), push to ${c.defaults?.branch || 'main'} with hooks on.`, `5. \`proofline gate ${t.id} --claims "<your report line>"\` and paste the report.`, '',
+    '## Forbidden (detected automatically)', `- skip/only/todo in tests; raising timeouts; net removal of assertions; deleting tests; --no-verify; env bypasses (${(f.bypass_env || []).join(', ')}); lowering protected values (${(f.protected_values || []).map((p) => p.file).join(', ') || 'none configured'}); editing thresholds/commands/criteria in proofline.json.`, '',
+    '## Owner rules', ...(c.owner_rules || []).map((r) => `- ${r}`), '',
+    '## Stop rules', ...t.stop_rules.map((s) => `- ${s}`), '',
+    '## Report line (exact format)', `${t.id} | done/partial/not done/blocked | <commit> | <test names> | <metric=value vs target> | <what is missing>`].join('\n');
+}
