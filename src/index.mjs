@@ -116,14 +116,14 @@ export function status(root, { owner } = {}) {
   return { project: c.project, ...(owner ? { owner } : {}), tasks: E.taskStatus(root, c), phases: E.phaseStatus(root, c), chain: verifyChain(root), active: activeTask(root) };
 }
 
-/** Brief for one task; with `owner`, another owner's task is refused. */
-export function taskBrief(root, id, { owner } = {}) {
+/** Brief for one task, with the base verify and gate will use (`base`: as --base); with `owner`, another owner's task is refused. */
+export function taskBrief(root, id, { owner, base } = {}) {
   const c = C.load(root);
   C.checkOwner(c, owner);
   const t = c.tasks.find((x) => x.id === id);
   if (!t) throw new Error(`unknown task ${id}`);
   if (!C.inLane(t, owner)) throw new Error(`task ${id} is owned by ${t.owner}, not ${owner}`);
-  return E.brief(c, t);
+  return E.brief(c, t) + '\n\n' + E.baseBrief(root, c, t, base);
 }
 
 export function report(root, taskId) {

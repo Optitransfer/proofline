@@ -16,6 +16,7 @@ const json = !!flags.json;
 const print = (obj, text) => { process.stdout.write((json || text === undefined ? JSON.stringify(obj, null, 2) : text) + '\n'); };
 const code = (d) => (d === 'PASS' ? 0 : d === 'BLOCKED' ? 2 : 1);
 const owner = () => { if (flags.owner === true) throw new Error('--owner needs a name'); return flags.owner; };
+const base = () => { if (flags.base === true) throw new Error('--base needs a revision'); return flags.base; };
 const claims = () => flags['claims-file'] ? fs.readFileSync(flags['claims-file'], 'utf8') : flags.claims === true ? fs.readFileSync(0, 'utf8') : flags.claims;
 
 const HELP = `proofline — independent V&V and delivery controller
@@ -24,7 +25,8 @@ const HELP = `proofline — independent V&V and delivery controller
   contract validate | show
   next [--owner <name>]                 the single next task with its full brief (marks it active);
                                         --owner: only that owner's tasks and unowned ones
-  brief <TASK> [--owner <name>]         brief for a task (refuses another owner's task)
+  brief <TASK> [--owner <name>] [--base <rev>]  brief for a task, with the base verify will use
+                                        (refuses another owner's task)
   verify <TASK> [--claims "line"] [--base <rev>]   run every check independently; prints corrective prompt
   gate <TASK>|--all [--claims ...] [--base <rev>]  release decision PASS/FAIL/BLOCKED + report (.proofline/reports)
                                         --base: the revision the task started from (needed in a fresh clone
@@ -53,13 +55,12 @@ try {
       break;
     }
     case 'next': { const n = P.taskNext(root, { owner: owner() }); print(n, n.brief || n.message); break; }
-    case 'brief': { const b = P.taskBrief(root, sub, { owner: owner() }); print({ brief: b }, b); break; }
+    case 'brief': { const b = P.taskBrief(root, sub, { owner: owner(), base: base() }); print({ brief: b }, b); break; }
     case 'verify': case 'gate': {
       const c = P.C.load(root);
       const ids = flags.all ? c.tasks.map((t) => t.id) : flags.ci ? (c.ci?.tasks || []) : [sub || P.activeTask(root)].filter(Boolean);
       if (!ids.length) { if (flags.ci) { const e = P.C.validate(c); print({ decision: e.length ? 'FAIL' : 'PASS', problems: e }, e.length ? e.join('\n') : 'contract valid; no ci.tasks'); process.exitCode = e.length ? 1 : 0; break; } throw new Error('which task? (proofline next)'); }
-      if (flags.base === true) throw new Error('--base needs a revision');
-      const outs = ids.map((id) => P.E.gate(root, id, { claims: claims(), base: flags.base, skipTypes: flags['skip-pushed'] || flags.ci ? ['pushed'] : [] }));
+      const outs = ids.map((id) => P.E.gate(root, id, { claims: claims(), base: base(), skipTypes: flags['skip-pushed'] || flags.ci ? ['pushed'] : [] }));
       const worst = outs.some((o) => o.decision === 'BLOCKED') ? 'BLOCKED' : outs.some((o) => o.decision === 'FAIL') ? 'FAIL' : 'PASS';
       print(outs.length === 1 ? outs[0] : { decision: worst, gates: outs.map((o) => ({ task: o.task, decision: o.decision, failing: o.failing, blocked: o.blocked })) },
         outs.map((o) => `== ${o.task}: ${o.decision}\n  base: ${o.base_ref} = ${o.base?.slice(0, 8) || 'not found'} (${o.base_source})\n${o.results.map((r) => `  ${r.status.toUpperCase().padEnd(5)} ${r.id} [${r.type}] ${r.detail.split('\n')[0]}`).join('\n')}${o.forbidden.length ? '\n  forbidden: ' + o.forbidden.map((f) => `${f.rule}@${f.file}`).join(', ') : ''}\n  report: ${o.report}\n\n${o.corrective_prompt}`).join('\n\n') + `\n\nDECISION: ${worst}`);

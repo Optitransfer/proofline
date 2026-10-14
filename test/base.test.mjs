@@ -96,3 +96,16 @@ test('next pins the base and the brief names it for other clones', () => {
   assert.ok(n.brief.includes(`--base ${start}`) && n.brief.includes(`Proofline-Base: ${start}`), n.brief.slice(-400));
   assert.equal(P.E.verifyTask(r, 'T').base_source, 'pinned at start');
 });
+
+test('brief takes --base and says which base verify and gate will use', () => {
+  const { clone, start } = published();
+  const run = (...a) => spawnSync(process.execPath, [BIN, ...a, '--root', clone], { encoding: 'utf8' });
+  const plain = run('brief', 'FP');
+  assert.equal(plain.status, 0, plain.stderr);
+  assert.match(plain.stdout, /## Base\n.*origin\/main = [0-9a-f]{8} \(default\).*BLOCKED.*--base <rev>/s);
+  const passed = run('brief', 'FP', '--base', 'HEAD~1');
+  assert.equal(passed.status, 0, passed.stderr);
+  assert.match(passed.stdout, new RegExp(`## Base\\n.*HEAD~1 = ${start.slice(0, 8)} \\(--base\\)`));
+  assert.doesNotMatch(passed.stdout, /BLOCKED/);
+  assert.equal(P.taskBrief(clone, 'FP', { base: start }).includes(`${start.slice(0, 8)} (--base)`), true);
+});

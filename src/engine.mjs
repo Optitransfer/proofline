@@ -51,13 +51,38 @@ export function baseFor(root, c, t, explicit) {
 
 const forbiddenOn = (f) => ['test_skip_only', 'timeout_raise', 'assertion_removal', 'test_file_deletion', 'no_verify'].some((k) => f[k] !== false) || (f.bypass_env || []).length > 0 || (f.protected_values || []).length > 0;
 
+/** The base for a task, resolved, with the reasons it cannot be used (each one BLOCKS the gate). */
+export function taskBase(root, c, t, explicit) {
+  const { ref, source } = baseFor(root, c, t, explicit);
+  const base = resolveBase(root, ref);
+  const problems = [];
+  if (!base) problems.push(`base revision "${ref}" (${source}) not found`);
+  const head = git(['rev-parse', '--verify', '--quiet', 'HEAD'], root).out;
+  if (base && head && source === 'commit trailer' && (base === head || !git(['merge-base', '--is-ancestor', base, head], root).ok))
+    problems.push(`base: the Proofline-Base trailer on HEAD names ${ref}, which is not an ancestor of HEAD ${head.slice(0, 8)}`);
+  // With no pinned or passed base, a default base at (or ahead of) HEAD gives an empty diff: every diff check would pass on nothing.
+  const diffBased = t.criteria.some((a) => ['scope', 'test_red_green'].includes(a.verifier?.type)) || forbiddenOn({ ...C.DEFAULT_FORBIDDEN, ...(c.forbidden || {}) });
+  if (base && head && source === 'default' && diffBased && git(['merge-base', '--is-ancestor', head, base], root).ok)
+    problems.push(`base: no base is pinned for ${t.id}, and the default base ${ref} is ${base === head ? 'HEAD' : 'ahead of HEAD'} (${base.slice(0, 8)}), so the diff does not hold this work and the forbidden scan, scope, red-green and weakening checks would see nothing`);
+  return { ref, source, base, problems };
+}
+
+const BASE_NEXT = 'gate against the revision the task started from: pass --base <rev> (for one commit, its parent), or start the task with `proofline next`, which pins the base. Do not pick a base that hides part of the work.';
+
+/** The "## Base" section of a brief: which base verify and gate will use, and whether they can. */
+export function baseBrief(root, c, t, explicit) {
+  const b = taskBase(root, c, t, explicit);
+  const L = [`## Base`, `verify and gate compare the working tree with ${b.ref} = ${b.base?.slice(0, 8) || 'not found'} (${b.source}).`];
+  if (b.problems.length) L.push(`As things stand the gate is BLOCKED: ${b.problems.join('; ')}.`, `Next step: ${BASE_NEXT}`);
+  return L.join('\n');
+}
+
 export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: explicitBase } = {}) {
   const c = C.load(root);
   const t = taskById(c, taskId);
   const errs = C.validate(c);
   // Base is pinned when the task starts, so pushing the work does not move the goalposts.
-  const { ref: baseRef, source: baseSource } = baseFor(root, c, t, explicitBase);
-  const base = resolveBase(root, baseRef);
+  const { ref: baseRef, source: baseSource, base, problems: baseProblems } = taskBase(root, c, t, explicitBase);
   const ctx = { root, contract: c, task: t, base, changed: base ? changedFiles(root, base) : new Map(), measured: {}, baseline: c.baseline?.metrics, tolerancePct: c.defaults?.regression_tolerance_pct, flakyReruns: c.defaults?.flaky_reruns ?? 1 };
   const results = [];
   for (const a of t.criteria) {
@@ -78,14 +103,7 @@ export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: e
 
   const blocked = [], failing = [];
   if (errs.length) blocked.push(...errs.map((e) => `contract invalid: ${e}`));
-  if (!base) blocked.push(`base revision "${baseRef}" (${baseSource}) not found`);
-  const head = git(['rev-parse', '--verify', '--quiet', 'HEAD'], root).out;
-  if (base && head && baseSource === 'commit trailer' && (base === head || !git(['merge-base', '--is-ancestor', base, head], root).ok))
-    blocked.push(`base: the Proofline-Base trailer on HEAD names ${baseRef}, which is not an ancestor of HEAD ${head.slice(0, 8)}`);
-  // With no pinned or passed base, a default base at (or ahead of) HEAD gives an empty diff: every diff check would pass on nothing.
-  const diffBased = t.criteria.some((a) => ['scope', 'test_red_green'].includes(a.verifier?.type)) || forbiddenOn(rules);
-  if (base && head && baseSource === 'default' && diffBased && git(['merge-base', '--is-ancestor', head, base], root).ok)
-    blocked.push(`base: no base is pinned for ${t.id}, and the default base ${baseRef} is ${base === head ? 'HEAD' : 'ahead of HEAD'} (${base.slice(0, 8)}), so the diff does not hold this work and the forbidden scan, scope, red-green and weakening checks would see nothing`);
+  blocked.push(...baseProblems);
   if (!chain.ok) blocked.push(`evidence log tampered at entry ${chain.at}: ${chain.reason}`);
   for (const w of weak) blocked.push(`contract weakened vs base (needs owner approval): ${w}`);
   for (const r of results) {
@@ -116,7 +134,7 @@ export function steer(v, c) {
   const L = [`PROOFLINE CORRECTIVE INSTRUCTION for ${v.task} (${t.title}): gate ${v.decision}`, `Revision ${v.head?.slice(0, 8)} vs base ${v.base?.slice(0, 8) || v.base_ref} (${v.base_source}). Do NOT report this task as done. Fix in this order:`, ''];
   let n = 1;
   for (const b of v.blocked) L.push(`${n++}. BLOCKED: ${b}\n   Next step: ${b.startsWith('base: ')
-    ? `gate against the revision the task started from: pass --base <rev> (for one commit, its parent), or start the task with \`proofline next\`, which pins the base. Do not pick a base that hides part of the work.`
+    ? BASE_NEXT
     : 'resolve the blocker (restore the contract, commit the missing rig/tool, or ask the owner). Do not work around it.'}`);
   for (const r of v.results.filter((x) => x.mandatory && x.status !== 'pass' && x.status !== 'error')) {
     const a = t.criteria.find((x) => x.id === r.id);
