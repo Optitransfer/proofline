@@ -130,13 +130,26 @@ export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: e
     if (claimResults.some((x) => !x.ok) && decision === 'PASS') decision = 'FAIL';
   }
   const hi = headInfo(root);
-  return { task: t.id, title: t.title, phase: t.phase, decision, base, base_ref: baseRef, base_source: baseSource, ...hi, contract_hash: C.contractHash(c), results, forbidden, weakenings: weak, contract_change: contractChange, blocked, failing, measured: ctx.measured, claims: claimResults, changed: [...ctx.changed.keys()], ts: new Date().toISOString() };
+  // Is this HEAD already on the push target? The pushed criterion says so when it ran; otherwise (skipped, or the
+  // task has none) a clean tree whose HEAD equals the local <remote>/<branch> ref counts. No network call here.
+  const pr = results.find((r) => r.type === 'pushed');
+  const tgt = pushTarget(c, t);
+  const pushed = pr ? pr.status === 'pass'
+    : !!hi.head && !git(['status', '--porcelain'], root).out.split('\n').some((l) => l && !l.includes('.proofline/')) && git(['rev-parse', '--verify', '--quiet', `refs/remotes/${tgt.remote}/${tgt.branch}^{commit}`], root).out === hi.head;
+  return { pushed, task: t.id, title: t.title, phase: t.phase, decision, base, base_ref: baseRef, base_source: baseSource, ...hi, contract_hash: C.contractHash(c), results, forbidden, weakenings: weak, contract_change: contractChange, blocked, failing, measured: ctx.measured, claims: claimResults, changed: [...ctx.changed.keys()], ts: new Date().toISOString() };
 }
 
 /** Corrective prompt tied to each failed criterion. */
 export function steer(v, c) {
   const t = taskById(c, v.task);
-  if (v.decision === 'PASS') return `${v.task}: PASS on ${v.head?.slice(0, 8)}. Commit, push to ${c.defaults?.branch || 'main'}, then report:\n${v.task} | done | <hash> | <tests> | ${Object.entries(v.measured).map(([k, x]) => `${k}=${x}`).join(', ') || '-'} | -\nThen call task_next.`;
+  if (v.decision === 'PASS') {
+    const p = pushTarget(c, t), h = v.head?.slice(0, 8);
+    const nums = Object.entries(v.measured).map(([k, x]) => `${k}=${x}`).join(', ') || '-';
+    const gateCmd = (hash) => `proofline gate ${v.task}${v.base_source === '--base' ? ` --base ${v.base}` : ''} --claims "${v.task} | done | ${hash} | <tests> | ${nums} | -"`;
+    if (!v.pushed) return `${v.task}: PASS on ${h}, not pushed yet. Commit (one task per commit) and push to ${p.remote} ${p.branch} with hooks on; the pre-push hook gates it again. Then report it:\n${gateCmd('<hash>')}`;
+    if (v.claims.length && v.claims.every((x) => x.ok)) return `${v.task}: PASS, verified on the pushed HEAD ${h} (${p.remote}/${p.branch}), and the claims match the evidence. The task is done. Next task: \`proofline next\`.`;
+    return `${v.task}: PASS, verified on the pushed HEAD ${h} (${p.remote}/${p.branch}). Nothing is left to commit. Report it, naming the tests that prove it:\n${gateCmd(h)}`;
+  }
   const L = [`PROOFLINE CORRECTIVE INSTRUCTION for ${v.task} (${t.title}): gate ${v.decision}`, `Revision ${v.head?.slice(0, 8)} vs base ${v.base?.slice(0, 8) || v.base_ref} (${v.base_source}). Do NOT report this task as done. Fix in this order:`, ''];
   let n = 1;
   for (const b of v.blocked) L.push(`${n++}. BLOCKED: ${b}\n   Next step: ${b.startsWith('base: ')
