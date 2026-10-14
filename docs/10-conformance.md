@@ -30,6 +30,7 @@
 | Same gate with `--base <parent>` and a change outside the task's scope | Scope-drift finding |
 | Repository already has a pre-push hook that refuses the push | After `init` the push is still refused by that hook; a passing hook hands over to the gate |
 | Two builders share a contract with owners | `next --owner a` never returns a task owned by `b`; an owner outside `defaults.owners` fails validation |
+| Metric run while the machine's load per CPU is above `defaults.max_load_per_cpu` | `BLOCKED` (machine busy, with the numbers); no measured value recorded |
 | Commit adds or amends `proofline.json` with the default deny-list | No forbidden finding in the contract itself; the change is judged by the weakening check |
 
 ## Conformance fixture format

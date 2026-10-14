@@ -87,6 +87,8 @@ export function validate(c) {
   const errs = [];
   if (c.schema !== SCHEMA) errs.push(`schema must be ${SCHEMA}`);
   if (c.defaults?.remote !== undefined && !isName(c.defaults.remote)) errs.push('defaults.remote must be a remote name (a string)');
+  const maxLoad = c.defaults?.max_load_per_cpu;
+  if (maxLoad !== undefined && !(typeof maxLoad === 'number' && maxLoad > 0)) errs.push('defaults.max_load_per_cpu must be a positive number');
   const owners = c.defaults?.owners;
   if (owners !== undefined && !(Array.isArray(owners) && owners.every(isName))) errs.push('defaults.owners must be a list of names');
   const ids = new Set();
@@ -144,6 +146,9 @@ export function weakenings(base, cur) {
       if (a.verifier?.cmd && n.verifier?.cmd && a.verifier.cmd !== n.verifier.cmd) out.push(`${id}/${a.id} command changed: "${a.verifier.cmd}" → "${n.verifier.cmd}"`);
     }
   }
+  const bl = base.defaults?.max_load_per_cpu, cl = cur.defaults?.max_load_per_cpu;
+  if (typeof bl === 'number' && cl === undefined) out.push(`defaults.max_load_per_cpu removed (was ${bl})`);
+  else if (typeof bl === 'number' && !(cl <= bl)) out.push(`defaults.max_load_per_cpu raised ${bl} → ${cl}`);
   const bf = base.forbidden || {}; const cf = cur.forbidden || {};
   for (const k of Object.keys(bf)) if (bf[k] && (cf[k] === false || cf[k] === undefined)) out.push(`forbidden rule ${k} disabled`);
   for (const e of bf.bypass_env || []) if (!(cf.bypass_env || []).includes(e)) out.push(`bypass env ${e} removed from forbidden list`);

@@ -77,13 +77,13 @@ export function baseBrief(root, c, t, explicit) {
   return L.join('\n');
 }
 
-export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: explicitBase } = {}) {
+export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: explicitBase, machine } = {}) {
   const c = C.load(root);
   const t = taskById(c, taskId);
   const errs = C.validate(c);
   // Base is pinned when the task starts, so pushing the work does not move the goalposts.
   const { ref: baseRef, source: baseSource, base, problems: baseProblems } = taskBase(root, c, t, explicitBase);
-  const ctx = { root, contract: c, task: t, base, changed: base ? changedFiles(root, base) : new Map(), measured: {}, baseline: c.baseline?.metrics, tolerancePct: c.defaults?.regression_tolerance_pct, flakyReruns: c.defaults?.flaky_reruns ?? 1 };
+  const ctx = { root, contract: c, task: t, base, changed: base ? changedFiles(root, base) : new Map(), measured: {}, machine, baseline: c.baseline?.metrics, tolerancePct: c.defaults?.regression_tolerance_pct, flakyReruns: c.defaults?.flaky_reruns ?? 1 };
   const results = [];
   for (const a of t.criteria) {
     if (only && !only.includes(a.id)) continue;
@@ -108,6 +108,7 @@ export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: e
   for (const w of weak) blocked.push(`contract weakened vs base (needs owner approval): ${w}`);
   for (const r of results) {
     if (r.status === 'error') blocked.push(`${r.id}: could not run: ${r.detail}`);
+    else if (r.status === 'blocked') blocked.push(`${r.id}: ${r.detail}`);
     else if (r.mandatory && r.status !== 'pass') failing.push(`${r.id} ${r.status.toUpperCase()}: ${r.detail}`);
   }
   for (const f of forbidden) failing.push(`forbidden ${f.rule} in ${f.file}: ${f.line}`);
@@ -135,8 +136,9 @@ export function steer(v, c) {
   let n = 1;
   for (const b of v.blocked) L.push(`${n++}. BLOCKED: ${b}\n   Next step: ${b.startsWith('base: ')
     ? BASE_NEXT
+    : /^[^:]+: machine busy:/.test(b) ? 'stop the other load (suites, benches, builds) and gate again on an idle machine. Do not change max_load_per_cpu.'
     : 'resolve the blocker (restore the contract, commit the missing rig/tool, or ask the owner). Do not work around it.'}`);
-  for (const r of v.results.filter((x) => x.mandatory && x.status !== 'pass' && x.status !== 'error')) {
+  for (const r of v.results.filter((x) => x.mandatory && !['pass', 'error', 'blocked'].includes(x.status))) {
     const a = t.criteria.find((x) => x.id === r.id);
     const how = {
       command: () => `Run \`${a.verifier.cmd}\`. Find the root cause of each failure (file:line + mechanism) and fix the cause. Re-run until exit ${a.verifier.expect_exit ?? 0}.`,

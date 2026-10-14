@@ -58,7 +58,7 @@ Demo (claimed done with no evidence → FAIL, then real work → PASS): `npm run
 | `command` | exit code matches; no hung/cancelled tests; optional `max_skipped`, `min_tests` (catches deleted tests). A fail-then-pass is **flaky**, not a pass |
 | `test_red_green` | the test exists, **fails** on the base revision (replayed in a git worktree) and **passes** now; named test actually executed |
 | `test_exists` | test file (and name) present |
-| `metric` | bench command's JSON (`key` dotted path) meets `op value`; also fails on >20% regression vs `baseline.metrics`. One bench run feeds all its metrics. Missing rig → BLOCKED |
+| `metric` | bench command's JSON (`key` dotted path) meets `op value`; also fails on >20% regression vs `baseline.metrics`. One bench run feeds all its metrics. Missing rig → BLOCKED. The evidence and report line record the 1-minute load, the CPU count and the `node --version` the command resolves; with `defaults.max_load_per_cpu` set, a load per CPU above it before the run is BLOCKED (machine busy), never PASS or FAIL, and raising or removing that limit is a contract weakening |
 | `grep` | pattern present/absent (e.g. the fast path is the **default** config) |
 | `wiring` | the symbol is **called** in a file reachable by static imports from the default entry (catches "built but not wired in") |
 | `scope` | every changed file matches the allowlist |

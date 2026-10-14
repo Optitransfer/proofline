@@ -1,9 +1,19 @@
-// Deterministic verifiers. Each returns { status: pass|fail|flaky|error, detail, evidence }.
+// Deterministic verifiers. Each returns { status: pass|fail|flaky|error|blocked, detail, evidence }.
 // "error" means the check could not be run (missing tool/file/base) and leads to BLOCKED, never PASS.
+// "blocked" means it must not be run now (a metric on a busy machine) and also leads to BLOCKED.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { run, git, tail, pick, lastJson, matchAny } from './util.mjs';
+
+/** The machine a metric runs on: 1-minute load average and CPU count. verifyTask takes a replacement as `machine`. */
+export const readMachine = () => ({ load1: os.loadavg()[0], cpus: os.cpus().length });
+
+/** `node --version` as the bench command would resolve it (same cwd and env), or null. */
+function nodeVersion(root, env) {
+  const r = run('node --version', { cwd: root, timeoutS: 30, env });
+  return r.exit === 0 ? r.stdout.trim() : null;
+}
 
 export const TEST_FILE_RE = /(^|\/)(test|tests|__tests__)\/|\.(test|spec)\.[mc]?[jt]sx?$/;
 const sub = (s, vars) => s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] ?? m));
@@ -121,13 +131,22 @@ export const verifiers = {
 
   metric(v, ctx) {
     // One bench run serves every metric criterion that uses the same command (benches are slow).
+    // The load is read before the run: a number taken on a busy machine is not evidence either way.
     ctx.cmdCache ??= {};
     const ck = v.cmd + JSON.stringify(v.env || {});
-    const r = ctx.cmdCache[ck] ??= run(v.cmd, { cwd: ctx.root, timeoutS: v.timeout_s || 1800, env: v.env });
+    const max = ctx.contract?.defaults?.max_load_per_cpu;
+    const { r, machine } = ctx.cmdCache[ck] ??= (() => {
+      const m = (ctx.machine || readMachine)();
+      const machine = { load1: m.load1, cpus: m.cpus, load_per_cpu: +(m.load1 / Math.max(1, m.cpus)).toFixed(2), node: nodeVersion(ctx.root, v.env) };
+      if (typeof max === 'number' && m.load1 / Math.max(1, m.cpus) > max) return { r: null, machine };
+      return { r: run(v.cmd, { cwd: ctx.root, timeoutS: v.timeout_s || 1800, env: v.env }), machine };
+    })();
+    const on = `load ${machine.load1.toFixed(2)} / ${machine.cpus} CPUs, node ${machine.node || 'not found'}`;
+    if (!r) return { status: 'blocked', detail: `machine busy: load ${machine.load1.toFixed(2)} over ${machine.cpus} CPUs = ${machine.load_per_cpu.toFixed(2)} per CPU > max_load_per_cpu ${max}; the bench was not run. Re-run when the machine is idle.`, evidence: { cmd: v.cmd, machine } };
     let data;
     if (v.output_file) { try { data = JSON.parse(fs.readFileSync(path.resolve(ctx.root, sub(v.output_file, process.env)), 'utf8')); } catch {} }
     else data = lastJson(r.stdout);
-    const e = { cmd: v.cmd, exit: r.exit, ms: r.ms, out_tail: tail(r.stdout + r.stderr, 800) };
+    const e = { cmd: v.cmd, exit: r.exit, ms: r.ms, machine, out_tail: tail(r.stdout + r.stderr, 800) };
     if (r.exit === 127) return { status: 'error', detail: `bench command not found: ${v.cmd} (is the bench rig committed in the repo?)`, evidence: e };
     if (data === undefined) return { status: 'error', detail: `no JSON output from bench (exit ${r.exit})`, evidence: e };
     const val = pick(data, v.key);
@@ -144,9 +163,9 @@ export const verifiers = {
       e.baseline = b;
       if (worse) reg = ` REGRESSION vs baseline ${b} (> ${ctx.tolerancePct ?? 20}%)`;
     }
-    if (!ok) return { status: 'fail', detail: `${name} = ${val}, needs ${v.op} ${v.value}${reg}`, evidence: e };
-    if (reg) return { status: 'fail', detail: `${v.key} = ${val} meets threshold but${reg}`, evidence: e };
-    return { status: 'pass', detail: `${v.key} = ${val} ${v.op} ${v.value}`, evidence: e };
+    if (!ok) return { status: 'fail', detail: `${name} = ${val}, needs ${v.op} ${v.value}${reg} (${on})`, evidence: e };
+    if (reg) return { status: 'fail', detail: `${v.key} = ${val} meets threshold but${reg} (${on})`, evidence: e };
+    return { status: 'pass', detail: `${v.key} = ${val} ${v.op} ${v.value} (${on})`, evidence: e };
   },
 
   grep(v, ctx) {
