@@ -1,6 +1,6 @@
-# ADR-0003: Standalone-first, HiveVault optional
+# ADR-0003: Standalone-first, context connectors optional
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-14
 
 ## Context

@@ -1,4 +1,4 @@
-# AGENTS.md — the mandatory loop for any coding agent (same as GROK.md)
+# AGENTS.md: the loop a coding agent follows in a repository that uses proofline (copy this file into that repository)
 
 Proofline decides whether your work is done. Your report is a claim; Proofline re-runs every check itself.
 
@@ -17,13 +17,13 @@ Proofline decides whether your work is done. Your report is a claim; Proofline r
 
 `TASK-ID | done/partial/not done/blocked | <commit> | <test names> | <metric=value vs target> | <what is missing>`
 
-Proofline rejects: "done" without a commit, test names or measured numbers; numbers that differ from its own measurement (>15%); commits not on main; tests that don't exist; hedged or deferred wording ("should work", "likely", "follow-up", "later", "out of scope").
+Proofline rejects: "done" without a commit, test names or measured numbers; numbers that differ from its own measurement (>15%); commits not on the contract's push branch; tests that don't exist; hedged or deferred wording ("should work", "likely", "follow-up", "later", "out of scope").
 
 ## Never
 
 - Skip/only/todo tests, raise timeouts, delete tests or assertions, edit fixtures to pass (unless the fixture is the proven root cause, with proof).
 - Lower a target, cap or test size, or touch thresholds/commands/criteria in `proofline.json` (detected; BLOCKED until the owner approves).
-- `--no-verify`, bypass env vars, skip flags. There is no bypass. CI re-runs the gate anyway.
+- `--no-verify`, bypass env vars, skip flags. There is no bypass. If CI runs `proofline gate --ci`, it re-runs the gate.
 - Say "done" for anything that is not PASS on the pushed HEAD.
 - Defer. Only the owner approves a deferral.
 

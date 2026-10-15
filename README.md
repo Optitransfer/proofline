@@ -1,6 +1,6 @@
 # Proofline
 
-Independent verification and delivery gates for AI agents. **Private.** CI: see [ci/README.md](ci/README.md) (workflow not yet enabled). Licence: Apache-2.0 (as set by the source design; review before any public release).
+Independent verification and delivery gates for AI agents. Licence: Apache-2.0.
 
 The agent does the work. Proofline owns the definition of done: it turns each task into a machine-checkable contract, re-runs every check itself, rejects claims the evidence does not support, tells the agent exactly what to fix next, and gives a PASS / FAIL / BLOCKED release decision with an evidence report.
 
@@ -19,10 +19,10 @@ cd /path/to/target-repo
 node /path/to/proofline/bin/proofline.mjs init          # proofline.json, .proofline/, git hooks (an existing hook is kept, see below)
 node /path/to/proofline/bin/proofline.mjs contract create --from task.json
 node /path/to/proofline/bin/proofline.mjs next          # the single next task + meticulous brief
-node /path/to/proofline/bin/proofline.mjs verify FP-01  # independent checks + corrective prompt
-node /path/to/proofline/bin/proofline.mjs gate FP-01 --claims "FP-01 | done | abc1234 | x.test.mjs | 4k.flushMs=1100 | -"
-node /path/to/proofline/bin/proofline.mjs gate FP-01 --base 1a2b3c4   # in a fresh clone: the revision the task started from
-node /path/to/proofline/bin/proofline.mjs gate FP-01 --fresh          # run every check again, even with reuse on (see below)
+node /path/to/proofline/bin/proofline.mjs verify TASK-1  # independent checks + corrective prompt
+node /path/to/proofline/bin/proofline.mjs gate TASK-1 --claims "TASK-1 | done | abc1234 | x.test.mjs | p50Ms=12 | -"
+node /path/to/proofline/bin/proofline.mjs gate TASK-1 --base 1a2b3c4   # in a fresh clone: the revision the task started from
+node /path/to/proofline/bin/proofline.mjs gate TASK-1 --fresh          # run every check again, even with reuse on (see below)
 node /path/to/proofline/bin/proofline.mjs status
 ```
 
@@ -75,11 +75,11 @@ Demo (claimed done with no evidence → FAIL, then real work → PASS): `npm run
 
 | Type | Passes only when |
 |---|---|
-| `command` | exit code matches; no hung/cancelled tests; optional `max_skipped`, `min_tests` (catches deleted tests). A fail-then-pass is **flaky**, not a pass |
+| `command` | exit code matches; no hung/cancelled tests; optional `max_skipped`, `min_tests` (catches deleted tests). A fail-then-pass is **flaky**, not a pass. Test counts and failing-test names are parsed from the Node test runner's output (TAP or spec reporter); for other runners use `command` criteria without `min_tests` |
 | `test_red_green` | the test exists, **fails** on the base revision (replayed in a git worktree) and **passes** now; named test actually executed |
 | `test_exists` | test file (and name) present |
 | `metric` | bench command's JSON (`key` dotted path) meets `op value`; also fails on >20% regression vs `baseline.metrics`. One bench run feeds all its metrics. Missing rig → BLOCKED. The evidence and report line record the 1-minute load, the CPU count and the `node --version` the command resolves; with `defaults.max_load_per_cpu` set, a load per CPU above it before the run is BLOCKED (machine busy), never PASS or FAIL, and raising or removing that limit is a contract weakening |
-| `grep` | pattern present/absent (e.g. the fast path is the **default** config) |
+| `grep` | pattern present/absent (e.g. the new code path is the default config) |
 | `wiring` | the symbol is **called** in a file reachable by static imports from the default entry (catches "built but not wired in") |
 | `scope` | every changed file matches the allowlist |
 | `docs` | generator leaves no diff in the given paths |
@@ -88,9 +88,9 @@ Demo (claimed done with no evidence → FAIL, then real work → PASS): `npm run
 
 Always on: forbidden-action scan of the diff (skip/only/todo, raised timeouts, net assertion loss, deleted tests, `--no-verify`, bypass env vars, lowered protected caps; `proofline.json` and `.proofline/` are left out, because the contract declares the deny-list and would match it), contract-weakening check vs the base revision (loosened thresholds, removed criteria, changed commands → BLOCKED), hash-chained evidence log integrity, claim reconciliation.
 
-## How Grok uses it
+## Using it from an agent
 
-Read [GROK.md](GROK.md) (also [AGENTS.md](AGENTS.md)). MCP config: [examples/mcp-config.json](examples/mcp-config.json). Tools: `contract_create`, `task_next`, `evidence_record`, `verify`, `gate`, `report`, `status`.
+Read [AGENTS.md](AGENTS.md). MCP config: [examples/mcp-config.json](examples/mcp-config.json). Tools: `contract_create`, `task_next`, `evidence_record`, `verify`, `gate`, `report`, `status`.
 
 ## Layout
 
@@ -105,9 +105,9 @@ src/engine.mjs           verify, steer (corrective prompts), gate (reports), nex
 src/mcp.mjs              MCP stdio server
 src/index.mjs            API, init, hooks
 examples/demo/           FAIL → PASS demo
-examples/hivevault-fastpath/  worked contract (FP-00..FP-10) + bench rig
+examples/demo-contract/  example contract (one task; the self-gate validates it)
 docs/                    source design: scope, requirements, architecture, lifecycle, evidence, roadmap …
-plans/                   backlog, definition of done, risk register, pilot plan
+plans/                   definition of done, risk register, pilot plan
 proofline.json           Proofline's own contract (self-gate, also run in CI)
 ```
 

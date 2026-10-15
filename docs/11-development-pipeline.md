@@ -39,7 +39,7 @@ flowchart TD
 9. Build/package.
 10. Generate provenance/checksum and release report.
 
-The initial workflow in this planning scaffold validates Markdown only. Runtime CI stages must be added with the first executable implementation; documentation CI must not be misrepresented as software verification.
+The workflow in `.github/workflows/proofline.yml` runs the self-gate (`node bin/proofline.mjs gate --ci`) on every push to `main` and on pull requests, with the branch tip before the push as the base, and uploads the evidence report. Documentation CI must not be misrepresented as software verification.
 
 ## Release discipline
 

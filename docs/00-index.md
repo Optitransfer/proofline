@@ -1,6 +1,6 @@
 # Documentation index
 
-This is the source of truth for the Proofline planning baseline. Requirements are normative where marked **MUST**; roadmap dates and implementation details remain provisional until explicitly accepted.
+This is the source of truth for the Proofline design. Requirements are normative where marked **MUST**; roadmap dates and implementation details remain provisional until explicitly accepted.
 
 ## Product and design
 

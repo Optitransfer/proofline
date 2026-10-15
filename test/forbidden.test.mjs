@@ -21,7 +21,7 @@ test('detects skip, raised timeout, removed assertions', () => {
 test('detects deleted tests, --no-verify and bypass env vars', () => {
   const r = repo({ files: { 'test/a.test.mjs': T0 } });
   fs.rmSync(path.join(r, 'test/a.test.mjs'));
-  write(r, { 'scripts/push.sh': `HIVEVAULT_ALLOW_PUBLIC_PUSH=1 git push ${NV}\n` });
+  write(r, { 'scripts/push.sh': `SKIP_HOOKS=1 git push ${NV}\n` });
   const rules = scan(r).map((f) => f.rule);
   for (const k of ['test_file_deletion', 'no_verify', 'bypass_env']) assert.ok(rules.includes(k), k);
 });

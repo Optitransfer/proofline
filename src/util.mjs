@@ -61,7 +61,7 @@ export function globRe(g) {
 }
 export const matchAny = (p, globs) => globs.some((g) => globRe(g).test(p));
 
-/** Read a dotted path like "writers32.savesPerSec" from an object. */
+/** Read a dotted path like "latency.p50" from an object. */
 export const pick = (o, p) => p.split('.').reduce((a, k) => (a == null ? undefined : a[k]), o);
 
 export function readJson(f, d) { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } }

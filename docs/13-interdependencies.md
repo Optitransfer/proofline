@@ -20,7 +20,7 @@ flowchart TD
     POLICY[Approval / exception policy] --> GATE
     GATE --> REPORT[Portable reports]
     REPORT --> PILOT[Pilot metrics]
-    HV[HiveVault optional context] -. non-authoritative context .-> CONTRACT
+    HV[Optional context connector] -. non-authoritative context .-> CONTRACT
 ```
 
 ## Dependency register
@@ -35,7 +35,7 @@ flowchart TD
 | DEP-06 | Deterministic gate rules | Enforce mode | False pass or inconsistent status | Implement and test gate logic before hooks can block |
 | DEP-07 | Conformance fixtures | Verifier confidence | Regressions in safety semantics | Build adversarial fixtures alongside core |
 | DEP-08 | Pilot instrumentation | Product go/no-go | No evidence product helps users | Capture catches, false blocks, latency, interruptions |
-| DEP-09 | Optional HiveVault connector | Cross-run context only | Integration may couple core to memory | Keep adapter boundary optional and read-only initially |
+| DEP-09 | An optional context connector, for example a project-memory store such as HiveVault | Cross-run context only | Integration may couple core to memory | Keep adapter boundary optional and read-only initially |
 
 ## Critical path
 
@@ -43,9 +43,9 @@ flowchart TD
 
 The first adapter spike can run in parallel with schema work, but it must not force vendor-specific concepts into the core model.
 
-## Integration rule for HiveVault
+## Integration rule for context connectors
 
-HiveVault may store or retrieve prior decisions, project constraints, known failure patterns, and accepted exceptions. Proofline must:
+A context connector may store or retrieve prior decisions, project constraints, known failure patterns, and accepted exceptions. Proofline must:
 - mark imported context as historical context;
 - show source and timestamp;
 - ask for confirmation when a historical decision conflicts with the current contract;

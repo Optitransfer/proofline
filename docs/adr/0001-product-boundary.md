@@ -1,6 +1,6 @@
 # ADR-0001: Product boundary and independence
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-14
 
 ## Context

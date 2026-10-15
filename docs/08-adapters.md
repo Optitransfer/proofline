@@ -25,7 +25,7 @@ The first adapter should be chosen by a short technical spike using:
 - safe failure behaviour when the agent or hook crashes;
 - ease of local installation and reproducible integration tests.
 
-Claude Code and Codex are candidate first adapters because they are part of the target workflow, but the choice must be recorded after testing rather than assumed in advance. Do not implement many thin adapters before one end-to-end path is trustworthy.
+Claude Code and Codex are candidate first adapters because they are widely used and expose lifecycle hooks. The choice must be recorded after testing rather than assumed in advance. Do not implement many thin adapters before one end-to-end path is trustworthy.
 
 ## Normalized event categories
 

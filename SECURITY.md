@@ -2,11 +2,11 @@
 
 ## Status
 
-Proofline is in planning. No runtime security guarantee is implied by these documents.
+Proofline runs commands from a contract you control; it makes no network calls of its own.
 
 ## Reporting
 
-Do not publish credentials, exploit details, or sensitive repository contents in a public issue. Until a private reporting channel is configured, contact the repository owner through a trusted private channel.
+Do not publish credentials, exploit details, or sensitive repository contents in a public issue; report it through GitHub's private vulnerability reporting on this repository (Security tab, Report a vulnerability).
 
 ## Security design priorities
 

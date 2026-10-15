@@ -1,6 +1,6 @@
 # ADR-0002: Evidence-based delivery states
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-14
 
 ## Context

@@ -29,7 +29,7 @@ test('removing a criterion, non-mandatory, changed command and disabled rules ar
   const a = base();
   const b = base(); b.tasks[0].criteria[0].mandatory = false; b.tasks[0].criteria[0].verifier.cmd = 'other'; b.forbidden.timeout_raise = false; b.forbidden.bypass_env = [];
   const w = C.weakenings(a, b).join('\n');
-  assert.match(w, /non-mandatory/); assert.match(w, /command changed/); assert.match(w, /timeout_raise disabled/); assert.match(w, /HIVEVAULT_ALLOW_PUBLIC_PUSH/);
+  assert.match(w, /non-mandatory/); assert.match(w, /command changed/); assert.match(w, /timeout_raise disabled/); assert.match(w, /SKIP_HOOKS/);
   const c = base(); c.tasks[0].criteria = [];
   assert.match(C.weakenings(a, c).join(), /criterion removed/);
 });

@@ -18,7 +18,7 @@ export const DEFAULT_FORBIDDEN = {
   assertion_removal: true,       // net loss of assert/expect lines in test files
   test_file_deletion: true,      // deleted test files
   no_verify: true,               // --no-verify / -n on git commit|push in added lines
-  bypass_env: ['HIVEVAULT_ALLOW_PUBLIC_PUSH', 'SKIP_HOOKS', 'HUSKY=0', 'PROOFLINE_SKIP', 'CI_SKIP'],
+  bypass_env: ['SKIP_HOOKS', 'HUSKY=0', 'PROOFLINE_SKIP', 'CI_SKIP'],
   protected_values: [],          // [{file, pattern (one capture group, a number), direction: "no_decrease"|"no_increase"}]
 };
 
@@ -37,12 +37,12 @@ export function skeleton(project = path.basename(process.cwd())) {
     schema: SCHEMA,
     project,
     owner_rules: [
-      'Done means ALL evidence: implemented as specified (task id), a test that FAILED before and passes now, suites green, measured number vs target, docs regenerated, committed AND pushed to main.',
+      "Done means ALL evidence: implemented as specified (task id), a test that FAILED before and passes now, suites green, measured number vs target, docs regenerated, committed AND pushed to the contract's branch.",
       'Never defer: no "later", "follow-up", "out of scope". If blocked: what blocks, what you tried, what you need; then continue with the next task.',
       'Root cause, then fix: file:line + mechanism. No weakening tests, raising timeouts, skips, relaxed assertions.',
       'No silent scope cuts: never lower targets, caps or test sizes without owner approval.',
       'Never bypass guards: no --no-verify, no bypass env vars, no skip flags.',
-      'Deliver continuously: one task per commit, pushed to main as it goes green.',
+      "Deliver continuously: one task per commit, pushed to the contract's branch as it goes green.",
       'Honest reporting: TASK-ID | status | commit | tests | measured vs target | missing.',
     ],
     defaults: { base: 'origin/main', branch: 'main', flaky_reruns: 1, max_corrective_cycles: 3, regression_tolerance_pct: 20 },

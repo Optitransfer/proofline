@@ -20,12 +20,12 @@ This is the initial normative requirements baseline. IDs are stable references f
 | REQ-012 | MUST | Corrective feedback MUST cite the gap, requirement ID, supporting evidence, and next action. | Feedback contract tests |
 | REQ-013 | MUST | Corrective retries MUST be bounded and repeated-loop detection MUST exist. | Retry-limit and loop fixtures |
 | REQ-014 | MUST | The system MUST emit human-readable and machine-readable reports. | Snapshot/schema tests |
-| REQ-015 | MUST | The system MUST work without HiveVault or a network connection for local workflows. | Offline integration test |
+| REQ-015 | MUST | The system MUST work without any external context store or network connection for local workflows. | Offline integration test |
 | REQ-016 | MUST | The system MUST record human-approved exceptions with actor, rationale, scope, and timestamp. | Exception audit tests |
 | REQ-017 | SHOULD | The system SHOULD support baseline and final revision comparison. | Git integration tests |
 | REQ-018 | SHOULD | The system SHOULD support report export and verification replay. | Replay integration test |
 | REQ-019 | SHOULD | The system SHOULD expose a stable adapter contract for future agent integrations. | Contract test harness |
-| REQ-020 | COULD | The system COULD integrate with HiveVault for prior decisions and accepted exceptions. | Optional integration tests |
+| REQ-020 | COULD | The system COULD integrate with an external context store for prior decisions and accepted exceptions. | Optional integration tests |
 
 ## Non-functional requirements
 
