@@ -25,8 +25,7 @@ This is the source of truth for the Proofline planning baseline. Requirements ar
 ## Decisions and examples
 
 - [Architecture decision records](adr/)
-- [Example task contract](../examples/task-contract.yaml)
-- [Initial development backlog](../plans/backlog.md)
+- [Example task contract](../examples/demo-contract/proofline.json)
 - [Change log](../CHANGELOG.md)
 
 ## Status vocabulary

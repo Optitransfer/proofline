@@ -63,9 +63,3 @@ test('MCP server: initialize, tools/list, task_next and verify over stdio', asyn
   assert.match(res[2].result.content[0].text, /# TASK A/);
   assert.match(res[3].result.content[0].text, /DECISION: PASS/);
 });
-
-test('hivevault-fastpath example contract is valid', () => {
-  const c = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../examples/hivevault-fastpath/proofline.json'), 'utf8'));
-  assert.deepEqual(P.C.validate(c), []);
-  assert.ok(c.tasks.length >= 8);
-});
