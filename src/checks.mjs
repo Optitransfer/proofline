@@ -65,13 +65,47 @@ function runCounted(cmd, root, v) {
   r.counts = { tests: num('tests'), pass: num('pass'), fail: num('fail'), skipped: num('skipped'), todo: num('todo'), cancelled: num('cancelled') };
   return r;
 }
-const ev = (r) => ({ cmd: r.cmd, exit: r.exit, ms: r.ms, counts: r.counts, timedOut: r.timedOut, out_tail: tail(r.stdout + (r.stderr ? '\n[stderr]\n' + r.stderr : ''), 1200) });
+
+export const FAILING_CAP = 100;
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
+// TAP: `not ok <n> - <name>`, subtests indented. node writes a `#` inside a name as `\#`, so an unescaped ` #` starts the directive.
+const TAP_FAIL_RE = /^\s*not ok\s+\d+(?:\s+-)?(?:\s+(.*))?$/;
+const TAP_DIRECTIVE_RE = /(?:^|\s)#\s*(\w*)/;
+// spec and dot reporters: `✖ <name> (<ms>ms)`. The duration comes last, except for a todo or skip, which node marks with
+// ` # <reason>` (or `# TODO`, `# SKIP`) after it. The `failing tests:` and `Failed tests:` summaries repeat these lines.
+const SPEC_FAIL_RE = /^\s*\u2716\s+(.*)\s\(\d+(?:\.\d+)?ms\)(\s+#.*)?$/;
+
+/**
+ * Names of the failed tests anywhere in a run's output, in order of first appearance, without repeats, todos or skips.
+ * At most `cap` names; `failing_total` is set only when there were more.
+ */
+export function failingTests(text, cap = FAILING_CAP) {
+  const seen = new Set();
+  for (const line of String(text).replace(ANSI_RE, '').split(/\r?\n/)) {
+    let m = line.match(TAP_FAIL_RE), name;
+    if (m) {
+      const rest = m[1] || '', d = rest.match(TAP_DIRECTIVE_RE);
+      if (!d || !/^(todo|skip)/i.test(d[1])) name = (d ? rest.slice(0, d.index) : rest).replace(/\\([\\#])/g, '$1');
+    } else if ((m = line.match(SPEC_FAIL_RE)) && !m[2]) name = m[1];
+    if (name && name.trim()) seen.add(name.trim());
+  }
+  const all = [...seen];
+  return all.length > cap ? { failing: all.slice(0, cap), failing_total: all.length } : { failing: all };
+}
+
+const ev = (r) => ({ cmd: r.cmd, exit: r.exit, ms: r.ms, counts: r.counts, timedOut: r.timedOut, ...failingTests(r.stdout + '\n' + r.stderr), out_tail: tail(r.stdout + (r.stderr ? '\n[stderr]\n' + r.stderr : ''), 1200) });
+/** "12 tests failed: a, b, ... and 2 more" from a run's evidence (first 10 names), or '' when it names none. */
+const named = (e) => {
+  const n = e.failing_total ?? e.failing.length, show = e.failing.slice(0, 10);
+  return n ? `${n} test${n === 1 ? '' : 's'} failed: ${show.join(', ')}${n > show.length ? ` and ${n - show.length} more` : ''}` : '';
+};
 
 export const verifiers = {
   command(v, ctx) {
     const expect = v.expect_exit ?? 0;
     let r = runCounted(v.cmd, ctx.root, v);
-    if (r.exit === 127) return { status: 'error', detail: `command not found: ${v.cmd}`, evidence: ev(r) };
+    const first = ev(r), firstExit = r.exit;
+    if (r.exit === 127) return { status: 'error', detail: `command not found: ${v.cmd}`, evidence: first };
     const tooMany = (r2) => {
       const c = r2.counts; const p = [];
       if ((c.cancelled || 0) > 0) p.push(`${c.cancelled} cancelled/hung`);
@@ -79,14 +113,15 @@ export const verifiers = {
       if (v.min_tests !== undefined && (c.tests ?? c.pass ?? 0) < v.min_tests) p.push(`only ${c.tests ?? c.pass ?? 0} tests ran, contract requires ≥ ${v.min_tests} (tests deleted or not discovered?)`);
       return p;
     };
-    if (r.exit === expect && !tooMany(r).length) return { status: 'pass', detail: `exit ${r.exit} in ${r.ms} ms`, evidence: ev(r) };
-    if (r.exit === expect) return { status: 'fail', detail: tooMany(r).join('; '), evidence: ev(r) };
-    const first = r;
+    if (r.exit === expect && !tooMany(r).length) return { status: 'pass', detail: `exit ${r.exit} in ${r.ms} ms`, evidence: first };
+    if (r.exit === expect) return { status: 'fail', detail: [...tooMany(r), named(first)].filter(Boolean).join('; '), evidence: first };
+    // Both runs keep their failing names: on a flaky result the first run's list is the tests that flapped.
     for (let i = 0; i < (ctx.flakyReruns ?? 1); i++) {
       r = runCounted(v.cmd, ctx.root, v);
-      if (r.exit === expect && !tooMany(r).length) return { status: 'flaky', detail: `failed (exit ${first.exit}) then passed on re-run ${i + 1}: flaky, not a pass. Root-cause the non-determinism.`, evidence: { first: ev(first), rerun: ev(r) } };
+      if (r.exit === expect && !tooMany(r).length) return { status: 'flaky', detail: `failed (exit ${firstExit}${named(first) ? `; ${named(first)}` : ''}) then passed on re-run ${i + 1}: flaky, not a pass. Root-cause the non-determinism.`, evidence: { first, rerun: ev(r) } };
     }
-    return { status: 'fail', detail: `exit ${r.exit} (expected ${expect})${r.timedOut ? ', timed out' : ''}; failed again on re-run, so it is real`, evidence: { first: ev(first), rerun: ev(r) } };
+    const rerun = ev(r), n = named(rerun.failing.length ? rerun : first);
+    return { status: 'fail', detail: `exit ${r.exit} (expected ${expect})${r.timedOut ? ', timed out' : ''}; failed again on re-run, so it is real${n ? `; ${n}` : ''}`, evidence: { first, rerun } };
   },
 
   file_exists(v, ctx) {

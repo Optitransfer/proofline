@@ -15,6 +15,7 @@ All notable project changes are recorded here. Dates use ISO 8601 (`YYYY-MM-DD`)
 ## [Unreleased]
 
 ### Fixed
+- A failed `command` criterion's evidence names the failed tests. `out_tail` keeps the last 1,200 characters, where node's summary of repeated failures with their stacks held the last two or three names. The new `failing` field lists the failed test names found anywhere in the output (TAP `not ok` lines, the spec reporter's `✖ <name> (<ms>ms)` lines and the `failing tests:` section), without todos, skips or repeats, in order of first appearance and at most 100, with `failing_total` when there were more. The FAIL detail names the first 10, a flaky result keeps both runs' lists, and the gate report lists the names under Failing tests (#13).
 - The forbidden scan no longer reads `proofline.json` or `.proofline/`: the commit that adds or amends the contract failed on its own deny-list. Contract changes stay covered by the weakening check, and the gate report says whether the contract was added, changed or unchanged vs the base (#4).
 - `init` no longer replaces an existing `pre-commit` or `pre-push` hook: it keeps it as `<hook>.proofline-prev`, and the installed hook runs it first (same arguments and stdin) and stops on its failure. A second `init` changes nothing (#1).
 - The corrective text for an unpushed task and the brief name the push target from the criterion's `remote`/`branch`, else `defaults.remote`/`defaults.branch`, instead of always `origin` (#8).

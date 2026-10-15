@@ -194,10 +194,26 @@ export function steer(v, c) {
 
 const reusedFrom = (x) => `reused from ${x.ts} (evidence entry ${x.entry})`;
 
+/** Each failed or flaky command criterion with the test names its evidence recorded, one line per run (both when it re-ran). */
+function failingTestLines(v) {
+  const L = [];
+  for (const r of v.results.filter((x) => x.type === 'command' && ['fail', 'flaky'].includes(x.status) && x.evidence)) {
+    L.push(`- ${r.id} [command] ${r.status.toUpperCase()}`);
+    const e = r.evidence;
+    for (const [label, x] of e.first ? [['first run', e.first], ['re-run', e.rerun]] : [['run', e]]) {
+      if (!x?.failing) continue;
+      const n = x.failing_total ?? x.failing.length;
+      L.push(`  - ${label} (exit ${x.exit}): ${n ? `${n} failed${x.failing_total ? ` (first ${x.failing.length} recorded)` : ''}: ${x.failing.join(', ')}` : 'none named'}`);
+    }
+  }
+  return L.length ? L : ['- none'];
+}
+
 function reportMd(v, c, prompt) {
   const row = (r) => `| ${r.id} | ${r.type} | ${r.mandatory ? 'yes' : 'no'} | ${r.status.toUpperCase()} | ${r.detail.split('\n')[0].replace(/\|/g, '\\|')} |`;
   return [`# Proofline gate: ${v.task} is **${v.decision}**`, '', `- Task: ${v.title} (phase ${v.phase})`, `- Revision: ${v.head} (tree ${v.tree.slice(0, 12)})`, `- Base: ${v.base_ref} = ${v.base} (${v.base_source})`, `- Contract hash: ${v.contract_hash}`, `- Time: ${v.ts}`, '',
     '## Acceptance criteria', '', '| ID | Verifier | Mandatory | Result | Evidence |', '|---|---|---|---|---|', ...v.results.map(row), '',
+    '## Failing tests', '', ...failingTestLines(v), '',
     '## Reused results', '', ...(v.reused.length ? v.reused.map((x) => `- ${x.id} [${x.type}]: ${reusedFrom(x)}; not run again in this gate`) : [`- none${{ off: ' (defaults.reuse_results is off)', fresh: ' (--fresh)' }[v.reuse] || ''}`]), '',
     '## Measured', '', ...(Object.keys(v.measured).length ? Object.entries(v.measured).map(([k, x]) => `- ${k}: ${x}`) : ['- none']), '',
     '## Forbidden actions', '', ...(v.forbidden.length ? v.forbidden.map((f) => `- ${f.rule} in ${f.file}: \`${f.line}\` (${f.why})`) : ['- none detected']),

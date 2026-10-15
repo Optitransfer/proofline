@@ -24,6 +24,20 @@ The exact schema will be versioned in implementation. Every record should suppor
 | `supersedes` | Prior record IDs replaced by a corrected observation |
 | `notes` | Short explanation, not a substitute for structured fields |
 
+## Command evidence
+
+A `command` criterion records one evidence object per run. A run that failed is re-run (`defaults.flaky_reruns`), and the evidence then holds both runs as `first` and `rerun`, so a flaky result shows which tests failed on the first run and passed on the re-run.
+
+| Field | Purpose |
+|---|---|
+| `cmd`, `exit`, `ms`, `timedOut` | The command as run, its exit code, its duration and whether it hit `timeout_s` |
+| `counts` | `tests`, `pass`, `fail`, `skipped`, `todo` and `cancelled` from node's summary (`# fail 3` or `ℹ fail 3`) |
+| `out_tail` | The last 1,200 characters of stdout and stderr |
+| `failing` | The names of the failed tests found anywhere in the output, not only in `out_tail`: TAP `not ok <n> - <name>` lines, spec and dot reporter `✖ <name> (<ms>ms)` lines, and the `failing tests:` summary node prints at the end. Tests marked TODO or SKIP (in the spec reporter, a `# <reason>` after the duration) are left out. Repeats are dropped, the order is that of first appearance, and the list holds at most 100 names. Output in another format gives an empty list; `out_tail` still holds its end |
+| `failing_total` | Present only when more than 100 names were found: how many there were |
+
+The FAIL detail names the first 10 failing tests (`9 tests failed: a, b, c`, then `and <n> more` past 10), and the gate report lists every recorded name under **Failing tests**, per run.
+
 ## Evidence rules
 
 - Capture the exact revision against which each check ran.
