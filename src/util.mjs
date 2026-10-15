@@ -28,6 +28,23 @@ export function git(args, cwd) {
   return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim() };
 }
 
+/** Where commit `sha` stands against <remote>/<branch>. { ok: false, err } when the remote cannot be read; otherwise
+ * { ok: true, tip, at, contains, behind, unknown }. A tip this repository lacks is fetched by the branch's name with no ref
+ * written (--refmap= keeps the remote-tracking ref, --no-write-fetch-head keeps FETCH_HEAD), so a commit under the tip is
+ * found without a fetch beforehand. `unknown`: the tip could not be fetched, so whether it holds the commit is not known. */
+export function onRemote(root, sha, remote, branch) {
+  const ls = git(['ls-remote', remote, `refs/heads/${branch}`], root);
+  if (!ls.ok) return { ok: false, err: ls.err || `git ls-remote ${remote} failed` };
+  const tip = ls.out.split(/\s/)[0] || '';
+  if (!tip) return { ok: true, tip: '', at: false, contains: false, behind: null, unknown: false };
+  if (tip === sha) return { ok: true, tip, at: true, contains: true, behind: 0, unknown: false };
+  const have = () => git(['cat-file', '-e', `${tip}^{commit}`], root).ok;
+  if (!have()) git(['fetch', '-q', '--no-tags', '--refmap=', '--no-write-fetch-head', remote, `refs/heads/${branch}`], root);
+  if (!have()) return { ok: true, tip, at: false, contains: false, behind: null, unknown: true };
+  const contains = git(['merge-base', '--is-ancestor', sha, tip], root).ok;
+  return { ok: true, tip, at: false, contains, behind: contains ? Number(git(['rev-list', '--count', `${sha}..${tip}`], root).out) : null, unknown: false };
+}
+
 export const tail = (s, n = 1500) => (s.length > n ? '…' + s.slice(-n) : s);
 
 /** Minimal glob → RegExp: ** , * , ? */

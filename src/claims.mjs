@@ -1,5 +1,5 @@
 // Parse an agent's status report and check every claim against evidence. Claims are never trusted.
-import { git } from './util.mjs';
+import { git, onRemote } from './util.mjs';
 
 const DONE = /^(done|complete(d)?|verified|pass(ed)?|fixed|finished|green)$/i;
 const HEDGE = /\b(should work|likely|probably|untested|not tested|later|follow[- ]?up|out of scope|defer(red)?|todo|next session|in a future)\b/i;
@@ -32,8 +32,9 @@ export function checkClaim(root, claim, res, { requirePushed = false, remote = '
     else {
       if (!git(['merge-base', '--is-ancestor', full.out, 'HEAD'], root).ok) issues.push(`commit ${sha} is not in HEAD's history`);
       if (requirePushed) {
-        const rh = git(['ls-remote', remote, `refs/heads/${branch}`], root).out.split(/\s/)[0];
-        if (rh && !git(['merge-base', '--is-ancestor', full.out, rh], root).ok) issues.push(`commit ${sha} is not on ${remote}/${branch}`);
+        const o = onRemote(root, full.out, remote, branch);
+        if (!o.ok) issues.push(`cannot check that commit ${sha} is on ${remote}/${branch}: ${o.err}`);
+        else if (!o.contains) issues.push(`commit ${sha} is not on ${remote}/${branch}${o.unknown ? ` (its tip ${o.tip.slice(0, 8)} could not be fetched)` : ''}`);
       }
     }
   }

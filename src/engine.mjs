@@ -301,7 +301,7 @@ export function brief(c, t, st = {}) {
       wiring: () => `\`${x.symbol}\` must be called on the default path from ${x.entry}`,
       scope: () => `only change: ${(x.allow || t.scope.allow).join(', ')}`,
       docs: () => `\`${x.cmd}\` leaves no diff in ${x.paths.join(', ')}`,
-      pushed: () => { const p = pushTarget(c, t, x); return `committed, tree clean, HEAD == ${p.remote}/${p.branch}`; },
+      pushed: () => { const p = pushTarget(c, t, x); return `committed, tree clean, HEAD == ${p.remote}/${p.branch} or a commit under it`; },
       file_exists: () => `${x.path} exists`,
     }[x.type]();
     return `${i + 1}. **${a.id}**${a.mandatory === false ? ' (advisory)' : ''}: ${a.statement || ''}\n   Verifier (${x.type}): ${how}`;

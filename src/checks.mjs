@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { run, git, tail, pick, lastJson, matchAny } from './util.mjs';
+import { run, git, tail, pick, lastJson, matchAny, onRemote } from './util.mjs';
 
 /** The machine a metric runs on: 1-minute load average and CPU count. verifyTask takes a replacement as `machine`. */
 export const readMachine = () => ({ load1: os.loadavg()[0], cpus: os.cpus().length });
@@ -261,9 +261,11 @@ export const verifiers = {
     const dirty = git(['status', '--porcelain'], ctx.root).out.split('\n').filter((l) => l && !l.includes('.proofline/'));
     if (dirty.length) return { status: 'fail', detail: `working tree not clean (${dirty.length} paths); work held locally`, evidence: { dirty: dirty.slice(0, 20) } };
     const head = git(['rev-parse', 'HEAD'], ctx.root).out;
-    const ls = git(['ls-remote', remote, `refs/heads/${branch}`], ctx.root);
-    if (!ls.ok) return { status: 'error', detail: `cannot reach ${remote}: ${ls.err}` };
-    const rh = ls.out.split(/\s/)[0];
-    return rh === head ? { status: 'pass', detail: `HEAD ${head.slice(0, 8)} is ${remote}/${branch}` } : { status: 'fail', detail: `HEAD ${head.slice(0, 8)} not pushed: ${remote}/${branch} is ${(rh || 'missing').slice(0, 8)}` };
+    // HEAD passes as the branch's tip or as a commit under it: a task whose commit sits inside a pushed stack is pushed
+    const o = onRemote(ctx.root, head, remote, branch);
+    if (!o.ok) return { status: 'error', detail: `cannot reach ${remote}: ${o.err}` };
+    if (o.at) return { status: 'pass', detail: `HEAD ${head.slice(0, 8)} is ${remote}/${branch}`, evidence: { tip: o.tip, behind: 0 } };
+    if (o.contains) return { status: 'pass', detail: `HEAD ${head.slice(0, 8)} is on ${remote}/${branch}, ${o.behind} commit${o.behind === 1 ? '' : 's'} under its tip ${o.tip.slice(0, 8)}`, evidence: { tip: o.tip, behind: o.behind } };
+    return { status: 'fail', detail: `HEAD ${head.slice(0, 8)} not pushed: ${remote}/${branch} is ${(o.tip || 'missing').slice(0, 8)}${o.unknown ? ', which could not be fetched to see whether it holds HEAD' : ''}`, evidence: { tip: o.tip || null, unknown: o.unknown } };
   },
 };
