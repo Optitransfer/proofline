@@ -1259,6 +1259,13 @@
           }
         },
         {
+          "id": "TB-02-AC08",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
           "id": "TB-02-AC07",
           "mandatory": true,
           "statement": "Committed and pushed to main",
@@ -1292,7 +1299,8 @@
           "docs/**",
           "README.md",
           "CHANGELOG.md",
-          "package.json"
+          "package.json",
+          "schema/**"
         ]
       },
       "criteria": [
@@ -1358,6 +1366,13 @@
             "cmd": "npm test",
             "expect_exit": 0,
             "timeout_s": 1800
+          }
+        },
+        {
+          "id": "TB-06-AC08",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
           }
         },
         {
@@ -1450,6 +1465,13 @@
             "file": "docs/releases.md",
             "pattern": "provenance",
             "must": "present"
+          }
+        },
+        {
+          "id": "TB-07-AC07",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
           }
         },
         {
