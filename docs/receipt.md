@@ -19,3 +19,5 @@ The MCP tools `receipt` and `verify_receipt` return that same JSON. `tools/list`
 `proofline hook stop` reads a Claude Code Stop payload and writes one receipt for the commits that session made. A second run on the same range writes none. `proofline connect claude-code` adds that hook after any Stop hook already in `~/.claude/settings.json`.
 
 When `GET /v1/state/digest` answers within 2 seconds, an L1 receipt gains `memory.vault_digest` and `memory.frontier`. An L2 receipt in ci mode gains only `memory_commitment`, the sha256 of the vault id, the digest and the frontier JSON, so a replica id is not in the receipt. No answer leaves the receipt unchanged. `--vault` writes `work/receipts/<date>-<role>-<sha7>.md` with origin `proofline`.
+
+The weakening check is a warning beside the owner signature. It names a loosened threshold, a removed criterion, or a changed command.
