@@ -207,18 +207,36 @@ export function settleLanded(root) {
   return { task: id, message: landedMessage(id, why) };
 }
 
-function commitsOnPushLine(root, line) {
+/** Server default-branch head for this push URL, from `git ls-remote` now. Never reads refs/remotes. */
+function serverDefaultHead(root, pushUrl) {
+  if (typeof pushUrl !== 'string' || !pushUrl.trim()) return { ok: false };
+  const ls = git(['ls-remote', pushUrl, 'HEAD'], root);
+  if (!ls.ok) return { ok: false };
+  const sha = (ls.out.split(/\s+/)[0] || '');
+  if (!sha) return { ok: true, sha: '' };
+  if (!/^[0-9a-f]{40}$/i.test(sha)) return { ok: false };
+  return { ok: true, sha };
+}
+
+function commitsOnPushLine(root, line, pushUrl) {
   const p = line.trim().split(/\s+/);
   if (p.length < 4) return [];
   const local = p[1];
   const remote = p[3];
   if (!/^[0-9a-f]{40}$/i.test(local) || /^0+$/.test(local)) return [];
-  // An existing branch uses remote..local, and both forms drop commits already on a remote.
-  // A rebase otherwise counts commits that reached main after the branch was first sent.
-  const spec = /^0+$/.test(remote) ? [local, '--not', '--remotes'] : [`${remote}..${local}`, '--not', '--remotes'];
-  const r = git(['rev-list', ...spec], root);
-  if (!r.ok || !r.out) return [];
-  return r.out.split('\n').filter(Boolean);
+  // Existing branch: remote..local. New branch: every commit reachable from local.
+  // Already sent means reachable from the server default-branch head. A local
+  // remote-tracking ref is not that head. An unreadable server gates the whole range.
+  const range = /^0+$/.test(remote) ? [local] : [`${remote}..${local}`];
+  const listed = git(['rev-list', ...range], root);
+  if (!listed.ok) return [];
+  const all = listed.out ? listed.out.split('\n').filter(Boolean) : [];
+  const server = serverDefaultHead(root, pushUrl);
+  if (!server.ok || !server.sha) return all;
+  if (!git(['cat-file', '-e', `${server.sha}^{commit}`], root).ok) return all;
+  const filtered = git(['rev-list', ...range, '--not', server.sha], root);
+  if (!filtered.ok) return all;
+  return filtered.out ? filtered.out.split('\n').filter(Boolean) : [];
 }
 
 export function evidenceRecord(root, type, data, actor = 'agent') {
@@ -351,7 +369,7 @@ function gateAtCommit(root, sha, id) {
  * that prints `proofline next`. An active task that has landed is cleared and never gated.
  * With no push lines (a direct call), the previous rule stands: the active task, else every in-progress or failed task.
  */
-export function hookPrePush(root, { lines } = {}) {
+export function hookPrePush(root, { lines, pushUrl } = {}) {
   // stdin lines are `<local ref> <local sha> <remote ref> <remote sha>`. The gated revision is that sha.
   if (lines == null) {
     let raw = '';
@@ -367,7 +385,7 @@ export function hookPrePush(root, { lines } = {}) {
   const haveLines = Array.isArray(lines) && lines.some((l) => l.trim());
   if (haveLines) {
     const known = new Set(c.tasks.map((t) => t.id));
-    const commits = [...new Set(lines.flatMap((l) => commitsOnPushLine(root, l)))];
+    const commits = [...new Set(lines.flatMap((l) => commitsOnPushLine(root, l, pushUrl)))];
     if (commits.length) {
       const active = activeTask(root);
       const activeLive = active && !landedWhy(root, active) ? active : null;
