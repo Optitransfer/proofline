@@ -1979,6 +1979,148 @@
         "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
         "If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item."
       ]
+    },
+    {
+      "id": "PL-14",
+      "title": "The pre-push hook gates only commits the server does not already hold",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-09"
+      ],
+      "requirements": [
+        "TB-R02"
+      ],
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "description": "Finding of 2026-10-16 (issue 31): sending a branch that was rebased onto a newer main made the sent range every commit not on the remote branch, which included tasks already landed on main, so the hook re-gated them and refused the send. The hook counts as already sent only commits reachable from the server's own head of the default branch, read for the push URL with `git ls-remote` at push time, never from local refs/remotes/*: a remote-tracking ref is local state that an agent can write (update-ref, a stale fetch), so trusting it would let a commit skip the gate. A rebased branch then gates its own task alone, and a commit placed under a local-only remote-tracking ref is still gated, on an existing branch and on the first push of a new branch alike (main at fe670fb already trusts refs/remotes for a new branch: measured by lane-b, one update-ref lets a failing commit through). If the server cannot be read, the hook gates every commit in the push range (fail closed).",
+      "criteria": [
+        {
+          "id": "PL-14-AC01",
+          "statement": "a branch rebased onto a newer main and sent again gates only its own commits; a failing commit placed under a local-only refs/remotes ref is still gated and refused, on an existing branch and on the first push of a new branch; with the server unreadable every commit in the range is gated",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/hook_push_range.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-14-AC02",
+          "statement": "the hook section says which commits a send gates",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "already on a remote|on no remote",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-14-AC03",
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-14-AC04",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-14-AC05",
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
+        "If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item."
+      ]
+    },
+    {
+      "id": "PL-15",
+      "title": "Every subcommand refuses a flag it does not know",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [],
+      "requirements": [
+        "TB-R02"
+      ],
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "description": "Finding of 2026-10-16 (issue 33): `proofline contract validate --file <proposal>` ignored --file and validated the contract at the root, so a whole day of proposals were reported valid without being read. Every subcommand checks its flags against the ones it accepts and exits 2 naming the unknown flag and the accepted ones; nothing runs on a refused command.",
+      "criteria": [
+        {
+          "id": "PL-15-AC01",
+          "statement": "contract validate --file and an unknown flag on each subcommand exit 2 with the flag named; the accepted flags still work",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/cli_unknown_flags.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-15-AC02",
+          "statement": "the refusal names the flag",
+          "verifier": {
+            "type": "grep",
+            "file": "bin/proofline.mjs",
+            "pattern": "unknown flag",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-15-AC03",
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-15-AC04",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-15-AC05",
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
+        "If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item."
+      ]
     }
   ],
   "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. PL-SELF stays: proofline verifies itself with its own contract.",
