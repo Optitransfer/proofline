@@ -324,7 +324,7 @@
           "statement": "npm pack succeeds and the tarball runs status in a fresh clone",
           "verifier": {
             "type": "command",
-            "cmd": "sh -c \"npm pack --silent >/dev/null && t=$(ls proofline-*.tgz|tail -1) && d=$(mktemp -d) && cd $d && git init -q && npm init -y >/dev/null && npm i -s $OLDPWD/$t >/dev/null && npx proofline status --json >/dev/null; code=$?; exit $([ $code -le 3 ] && echo 0 || echo 1)\"",
+            "cmd": "sh -c \"npm pack --silent >/dev/null && t=$(ls optitransfer-proofline-*.tgz|tail -1) && d=$(mktemp -d) && cd $d && git init -q && npm init -y >/dev/null && npm i -s $OLDPWD/$t >/dev/null && npx proofline status --json >/dev/null; code=$?; exit $([ $code -le 3 ] && echo 0 || echo 1)\"",
             "expect_exit": 0,
             "timeout_s": 1800
           }
