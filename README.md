@@ -124,6 +124,8 @@ Exit codes: `0` PASS, `1` FAIL, `2` BLOCKED, `3` usage. Every command takes `--j
 
 That is the short path: four commands, in that order. The diagram and the table below are the manual path.
 
+Once `guard/owner.pub` is pinned, `proofline contract sign` writes `proofline.json.sig` and `proofline contract verify-sig` checks it. `proofline contract propose` writes `proposals/<sha256>.diff` and prints the hash. An unsigned or altered contract is refused with `contract not owner-signed`.
+
 Three parties: **you** (the owner of the repository), **your agent** (Claude Code, Cursor, a CI job), and **Proofline** (the hooks and the gate in your repository). The agent builds; Proofline checks; you decide twice, once on the rules and once on the result.
 
 ```mermaid

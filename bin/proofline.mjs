@@ -8,6 +8,7 @@ import { verifyReceipt } from '../src/verify-receipt.mjs';
 import { buildReceipt } from '../src/receipt.mjs';
 import { connectClaudeCode, hookStop } from '../src/hook-stop.mjs';
 import * as G from '../src/guided.mjs';
+import * as S from '../src/signature.mjs';
 
 const argv = process.argv.slice(2);
 const flags = {}; const pos = [];
@@ -21,6 +22,14 @@ const root = flags.root ? flags.root : P.findRoot();
 const json = !!flags.json;
 const print = (obj, text) => { process.stdout.write((json || text === undefined ? JSON.stringify(obj, null, 2) : text) + '\n'); };
 const code = (d) => (d === 'PASS' ? 0 : d === 'BLOCKED' ? 2 : 1);
+
+function ownerGate(root) {
+  const r = S.verifyContractSignature(root);
+  if (!r.armed || r.ok) return true;
+  console.error(`proofline: contract not owner-signed\n${r.detail}`);
+  process.exitCode = 2;
+  return false;
+}
 const owner = () => { if (flags.owner === true) throw new Error('--owner needs a name'); return flags.owner; };
 const base = () => { if (flags.base === true) throw new Error('--base needs a revision'); return flags.base; };
 const claims = () => flags['claims-file'] ? fs.readFileSync(flags['claims-file'], 'utf8') : flags.claims === true ? fs.readFileSync(0, 'utf8') : flags.claims;
@@ -29,6 +38,9 @@ const HELP = `proofline: independent V&V and delivery controller
   setup [--agent claude-code|none]      init, hooks, the owner key, approvals at .proofline/approvals
   task "<plain words>"                  write a proposal from those words and print its hash
   contract approve [<hash>]             show the diff; on y write the marker and apply the bytes
+  contract sign                          write proofline.json.sig with the owner key
+  contract verify-sig                    check the owner signature
+  contract propose                       write proposals/<sha256>.diff and print the hash
   watch [TASK]                          print the active task until the gate is PASS
   init [--no-hooks] [--approvals <dir>] create proofline.json, .proofline/, install git hooks;
                                         --approvals sets the directory of owner markers (re-runnable)
@@ -116,6 +128,13 @@ try {
         const task = P.C.scaffoldTask({ title: flags.title, scope: flags.scope, kind, id });
         print(task, JSON.stringify(task, null, 2));
       }
+      else if (sub === 'sign') process.stdout.write(S.signContract(root));
+      else if (sub === 'verify-sig') {
+        const r = S.verifyContractSignature(root);
+        if (!r.ok) { console.error(`proofline: contract not owner-signed\n${r.detail}`); process.exitCode = 2; }
+        else process.stdout.write(`${r.detail}\n`);
+      }
+      else if (sub === 'propose') process.stdout.write(S.proposeContract(root));
       else if (sub === 'approve') {
         process.stdout.write(G.approve(root, pos[2]));
       }
@@ -123,9 +142,16 @@ try {
       else { console.error(HELP); process.exitCode = 3; }
       break;
     }
-    case 'next': { const n = P.taskNext(root, { owner: owner() }); print(n, n.brief || n.message); break; }
-    case 'brief': { const b = P.taskBrief(root, sub, { owner: owner(), base: base() }); print({ brief: b }, b); break; }
+    case 'next': {
+      if (!ownerGate(root)) break;
+      const n = P.taskNext(root, { owner: owner() }); print(n, n.brief || n.message); break;
+    }
+    case 'brief': {
+      if (!ownerGate(root)) break;
+      const b = P.taskBrief(root, sub, { owner: owner(), base: base() }); print({ brief: b }, b); break;
+    }
     case 'verify': case 'gate': {
+      if (!ownerGate(root)) break;
       const requested = sub;
       const settled = P.settleLanded(root);
       if (settled && !flags.all && !flags.ci && (!requested || requested === settled.task)) {
@@ -173,6 +199,7 @@ try {
       break;
     }
     case 'hook': {
+      if ((sub === 'pre-commit' || sub === 'pre-push') && !ownerGate(root)) break;
       if (sub === 'stop') {
         let payload = {};
         try {
