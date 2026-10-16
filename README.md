@@ -66,7 +66,7 @@ Caught five, passed one.
 In the repository the agent works on:
 
 ```bash
-git clone https://github.com/mgillr/proofline ~/proofline && node ~/proofline/bin/proofline.mjs init --approvals ~/.proofline/approved && cp ~/proofline/AGENTS.md .
+npm install --save-dev @optitransfer/proofline@next && npx proofline init --approvals ~/.proofline/approved && cp node_modules/@optitransfer/proofline/AGENTS.md .
 ```
 
 ```text
@@ -91,14 +91,14 @@ cat > task.json <<'JSON'
       "verifier": { "type": "command", "cmd": "npm test" } },
     { "id": "TASK-1-AC03", "mandatory": true, "statement": "pushed", "verifier": { "type": "pushed" } } ] }
 JSON
-node ~/proofline/bin/proofline.mjs contract create --from task.json     # TASK-1: valid
-node ~/proofline/bin/proofline.mjs next                                   # the agent's first command: the brief, with the base pinned
+npx proofline contract create --from task.json     # TASK-1: valid
+npx proofline next                                   # the agent's first command: the brief, with the base pinned
 ```
 
 When the agent reports, Proofline checks. Before any work this is what it says, and the agent is told what to do next:
 
 ```text
-$ node ~/proofline/bin/proofline.mjs verify TASK-1
+$ npx proofline verify TASK-1
 == TASK-1: FAIL
   base: 0a88576db5567f08c9f1cd9481c633001036d8e1 = 0a88576d (pinned at start)
   FAIL  TASK-1-AC01 [test_red_green] test file test/empty_body.test.mjs not found
@@ -114,7 +114,7 @@ PROOFLINE CORRECTIVE INSTRUCTION for TASK-1 (Reject an empty body): gate FAIL
 DECISION: FAIL
 ```
 
-Exit codes: `0` PASS, `1` FAIL, `2` BLOCKED, `3` usage. Every command takes `--json`. The published package, `@optitransfer/proofline` (a `next` prerelease first), replaces the clone path with `npx @optitransfer/proofline@next`.
+Exit codes: `0` PASS, `1` FAIL, `2` BLOCKED, `3` usage. Every command takes `--json`. The published package is `@optitransfer/proofline` at `0.2.0-next.0` on the `next` dist-tag: `npx @optitransfer/proofline@next`.
 
 ## Why
 

@@ -1,14 +1,57 @@
 {
-  "name": "proofline",
-  "version": "0.1.0",
-  "description": "Independent verification and delivery gates for AI agents.",
+  "name": "@optitransfer/proofline",
+  "version": "0.2.0-next.0",
+  "description": "Independent V&V for coding agents. The agent says done; Proofline re-runs every check against a contract, rejects claims the evidence does not support, and gates the push.",
+  "keywords": [
+    "ai-agents",
+    "llm",
+    "mcp",
+    "mcp-server",
+    "agentic-ai",
+    "claude-code",
+    "verification",
+    "validation",
+    "testing",
+    "test-automation",
+    "quality-gate",
+    "ci-cd",
+    "devops",
+    "code-review",
+    "git-hooks",
+    "audit",
+    "attestation",
+    "developer-tools",
+    "nodejs",
+    "cli"
+  ],
+  "homepage": "https://github.com/mgillr/proofline",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mgillr/proofline.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mgillr/proofline/issues"
+  },
+  "author": "mgillr",
   "license": "Apache-2.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "bin": { "proofline": "bin/proofline.mjs" },
   "engines": { "node": ">=22" },
+  "files": [
+    "bin",
+    "src",
+    "docs",
+    "AGENTS.md",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "PATENTS-NONASSERT.md"
+  ],
   "scripts": {
-    "test": "node --test",
+    "test": "node --test test/*.test.mjs",
     "demo": "node examples/demo/demo.mjs",
     "self-gate": "node bin/proofline.mjs gate PL-SELF --skip-pushed",
     "mcp": "node bin/proofline.mjs mcp"
