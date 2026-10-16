@@ -21,3 +21,9 @@ The repository holds the CLI, the MCP server, the engine and their tests. Change
 - Does it introduce unbounded retries, hidden side effects, or excessive interruption?
 - Are permission boundaries and secret handling explicit?
 - Can the outcome be reproduced from the report and captured revision?
+
+## Sign-off
+
+Each commit needs a Developer Certificate of Origin sign-off (https://developercertificate.org/). Put this line in the commit message, with the name and email of the commit:
+
+Signed-off-by: Name <email>
