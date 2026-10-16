@@ -116,6 +116,41 @@ DECISION: FAIL
 
 Exit codes: `0` PASS, `1` FAIL, `2` BLOCKED, `3` usage. Every command takes `--json`. The published package is `@optitransfer/proofline` at `0.2.0-next.0` on the `next` dist-tag: `npx @optitransfer/proofline@next`.
 
+## How you use it, start to finish
+
+Three parties: **you** (the owner of the repository), **your agent** (Claude Code, Cursor, a CI job), and **Proofline** (the hooks and the gate in your repository). The agent builds; Proofline checks; you decide twice, once on the rules and once on the result.
+
+```mermaid
+sequenceDiagram
+    participant You
+    participant Agent
+    participant Proofline
+    You->>Proofline: 1. npx proofline init
+    You->>Agent: 2. the task, in plain words
+    Agent->>Proofline: 3. proofline contract create (the task as checks)
+    Proofline-->>You: the contract and its hash
+    You->>Proofline: 4. approve the hash
+    Agent->>Proofline: 5. proofline next, build, proofline verify (repeat)
+    Agent->>Proofline: 6. git commit, git push (the hooks gate both)
+    Agent-->>You: 7. "done", commit, tests
+    Proofline-->>You: 8. gate report and signed receipt
+    You->>You: merge
+```
+
+| Step | Who | What happens | Command |
+|---|---|---|---|
+| 1 | You | Install Proofline in the repository once. It writes an empty `proofline.json`, installs the pre-commit and pre-push hooks and records where your approvals live. | `npm i -D @optitransfer/proofline@next` then `npx proofline init` |
+| 2 | You | Describe the task to your agent in plain words. "Add per-client rate limiting, 100 requests a minute, 429 with Retry-After, every existing test stays green." | your agent's chat |
+| 3 | Agent | Turn the words into a contract: a title, the files it may touch, and acceptance criteria that are checks, not sentences (a test that fails before and passes after, a grep for `Retry-After`, the suite green, changes in scope, pushed). The result is the contract's new bytes and their hash. The agent cannot put it into force. | `proofline contract create` |
+| 4 | You | Read the contract (it is short and every line is checkable) and approve its hash. From now on the hooks accept only contract bytes you approved, so the agent cannot change the rules it is judged by. | approve the hash |
+| 5 | Agent | Take the one active task with its brief, write the failing test first, then the code, and run the checks as often as it likes. Proofline re-runs every criterion itself and prints a corrective instruction for anything not yet true. | `proofline next`, `proofline verify TASK` |
+| 6 | Agent | Commit and push. The pre-commit hook refuses the known shortcuts: skipped tests, raised timeouts, deleted assertions, a bypass flag. The pre-push hook runs the gate before anything leaves the machine; a FAIL stays local. | `git commit`, `git push` |
+| 7 | Agent | Report: done, the commit, the tests. The report is a claim, not evidence. | one line |
+| 8 | Proofline | The gate compares the claim with what it measured and writes the report: every criterion PASS or FAIL with the measured detail, and a signed receipt (through agentkey) saying which agent role produced the commit against which contract hash. A claim the evidence does not support is rejected. | `proofline gate TASK` |
+| | You | Read the one page, not the diff. Merge. | |
+
+What you never do: read the agent's prose for reassurance, trust a green checkmark the agent printed, or let the agent change the rules it is judged by.
+
 ## Why
 
 An agent's report is a claim. Left to itself it says "done" for a test it skipped, a timeout it raised, a target it lowered, a commit it never pushed, or a number it did not measure. Reviewing every claim by hand does not scale past one agent, and asking a second model whether the first one is right only adds a second opinion.
