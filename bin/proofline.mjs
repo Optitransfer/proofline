@@ -52,8 +52,8 @@ const HELP = `proofline: independent V&V and delivery controller
   contract coverage <REQUIREMENTS.md> [--contracts a.json,b.json]
                                         one line per requirement id, or MISSING
   contract validate | show              validate also warns when a grep already matches on the base revision
-  next [--owner <name>]                 the single next task with its full brief (marks it active);
-                                        --owner: only that owner's tasks and unowned ones
+  next [--owner <name>] [--base <rev>]  the single next task with its full brief (marks it active);
+                                        --owner limits the lane; --base re-pins the base
   brief <TASK> [--owner <name>] [--base <rev>]  brief for a task, with the base verify will use
                                         (refuses another owner's task)
   verify <TASK> [--claims "line"] [--base <rev>] [--fresh]   run every check independently; prints corrective prompt
@@ -144,7 +144,7 @@ try {
     }
     case 'next': {
       if (!ownerGate(root)) break;
-      const n = P.taskNext(root, { owner: owner() }); print(n, n.brief || n.message); break;
+      const n = P.taskNext(root, { owner: owner(), ...(flags.base === undefined ? {} : { base: base() }) }); print(n, n.brief || n.message); break;
     }
     case 'brief': {
       if (!ownerGate(root)) break;
