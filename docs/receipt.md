@@ -11,3 +11,5 @@ Without a contract, `receipt` infers the suite from the manifest at the base rev
 | build.gradle, `*.sln` | no default command, status blocked |
 
 Changed tests are paths under `test/` or `tests/`, or names matching `*_test.*`, `*.test.*`, `*.spec.*` or `test_*.py`. Nothing inferable yields an L0 receipt and exit 2. A missing toolchain is blocked, not a pass.
+
+`verify-receipt` checks the DSSE envelope offline against PEM files in `--keys` (or `$AGENTKEY_HOME/keys`), named `<keyid>.pem`. Exit 0 is verified, 1 is a bad signature, a schema problem or a `--recompute` difference, 2 is an unknown key, and 3 is usage. `--sigstore` is the only path that loads that verifier.

@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import * as P from '../src/index.mjs';
 import { verifyChain, readLog } from '../src/evidence.mjs';
+import { verifyReceipt } from '../src/verify-receipt.mjs';
 
 const argv = process.argv.slice(2);
 const flags = {}; const pos = [];
@@ -38,6 +39,8 @@ const HELP = `proofline — independent V&V and delivery controller
   report <TASK>                         latest gate report
   status [--owner <name>]               task + phase status, evidence chain
   evidence record <type> --data '{..}' | evidence verify | evidence log
+  verify-receipt <envelope> [--keys <dir>] [--sigstore] [--recompute --base <sha>]
+                                        exit 0 verified, 1 failed or differs, 2 unknown key, 3 usage
   hook pre-commit|pre-push              (used by git hooks)
   mcp                                   MCP server on stdio
 Global: --json  --root <dir>   Exit: 0 PASS, 1 FAIL, 2 BLOCKED, 3 usage`;
@@ -83,6 +86,16 @@ try {
       else if (sub === 'verify') { const v = verifyChain(root); print(v, v.ok ? `chain intact: ${v.entries} entries, head ${v.head.slice(0, 16)}` : `CHAIN BROKEN at ${v.at}: ${v.reason}`); process.exitCode = v.ok ? 0 : 2; }
       else if (sub === 'log') print(readLog(root));
       else { console.error(HELP); process.exitCode = 3; }
+      break;
+    }
+    case 'verify-receipt': {
+      if (!sub) { console.error(HELP); process.exitCode = 3; break; }
+      const r = await verifyReceipt(sub, {
+        root, keys: flags.keys === true ? undefined : flags.keys, sigstore: flags.sigstore === true,
+        recompute: flags.recompute === true, base: flags.base === true ? undefined : flags.base,
+      });
+      print(r, r.message);
+      process.exitCode = r.exitCode;
       break;
     }
     case 'hook': {
