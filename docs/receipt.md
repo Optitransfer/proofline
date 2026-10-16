@@ -20,4 +20,4 @@ The MCP tools `receipt` and `verify_receipt` return that same JSON. `tools/list`
 
 When `GET /v1/state/digest` answers within 2 seconds, an L1 receipt gains `memory.vault_digest` and `memory.frontier`. An L2 receipt in ci mode gains only `memory_commitment`, the sha256 of the vault id, the digest and the frontier JSON, so a replica id is not in the receipt. No answer leaves the receipt unchanged. `--vault` writes `work/receipts/<date>-<role>-<sha7>.md` with origin `proofline`.
 
-The weakening check is a warning beside the owner signature. It names a loosened threshold, a removed criterion, or a changed command.
+The weakening check is a warning beside the owner signature. It names a loosened threshold, a removed criterion, or a changed command. Once `guard/owner.pub` is pinned, a missing, altered or wrongly-signed contract is refused with `contract not owner-signed`.

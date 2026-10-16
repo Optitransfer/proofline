@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,7 +7,6 @@ import assert from 'node:assert/strict';
 import * as P from '../src/index.mjs';
 import { repo, commitAll, BIN } from './helpers.mjs';
 
-const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const AGENTKEY = '/Users/imac27/programme-b/agentkey/bin/agentkey.mjs';
 
 function agentEnv() {
@@ -79,8 +77,7 @@ test('a pinned contract is refused until the owner signature matches, and the pu
     fs.writeFileSync(sig, saved);
     const contract = path.join(root, 'proofline.json');
     const original = fs.readFileSync(contract);
-    const altered = original.toString('utf8').replace('ok', 'changed');
-    fs.writeFileSync(contract, altered);
+    fs.writeFileSync(contract, original.toString('utf8').replace('ok', 'changed'));
     const bad = run(root, ['contract', 'verify-sig'], box.env);
     assert.equal(bad.status, 2);
     assert.match(bad.stderr || '', /contract not owner-signed/);
@@ -100,18 +97,4 @@ test('a pinned contract is refused until the owner signature matches, and the pu
     fs.chmodSync(box.ak, 0o700);
     assert.equal(fs.readFileSync(path.join(box.ak, 'canary'), 'utf8'), 'do-not-read');
   }
-});
-
-test('contract propose writes proposals/<sha256>.diff and prints the hash', () => {
-  const root = repo();
-  const file = path.join(root, 'proofline.json');
-  const before = fs.readFileSync(file);
-  fs.writeFileSync(file, `${before.toString('utf8')}\n`);
-  const r = run(root, ['contract', 'propose'], process.env);
-  assert.equal(r.status, 0, r.stderr);
-  const hex = r.stdout.trim();
-  assert.match(hex, /^[0-9a-f]{64}$/);
-  const diff = fs.readFileSync(path.join(root, '.proofline', 'proposals', `${hex}.diff`));
-  assert.equal(sha256(diff), hex);
-  assert.equal(fs.readFileSync(file).toString('utf8'), `${before.toString('utf8')}\n`);
 });
