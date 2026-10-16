@@ -75,8 +75,55 @@ const HELP = `proofline: independent V&V and delivery controller
   mcp                                   MCP server on stdio
 Global: --json  --root <dir>   Exit: 0 PASS, 1 FAIL, 2 BLOCKED, 3 usage`;
 
+const GLOBAL_FLAGS = ['json', 'root'];
+const ACCEPTED_FLAGS = {
+  setup: ['agent'],
+  task: [],
+  init: ['approvals', 'no-hooks'],
+  'contract create': ['from', 'id', 'title', 'phase', 'owner', 'description', 'depends', 'scope'],
+  'contract merge': ['owners'],
+  'contract coverage': ['contracts'],
+  'contract scaffold': ['title', 'scope', 'kind', 'id'],
+  'contract approve': [],
+  'contract sign': [],
+  'contract verify-sig': [],
+  'contract propose': [],
+  'contract validate': ['base'],
+  'contract show': [],
+  next: ['owner', 'base'],
+  brief: ['owner', 'base'],
+  verify: ['claims', 'claims-file', 'base', 'fresh'],
+  gate: ['claims', 'claims-file', 'base', 'fresh', 'all', 'ci', 'skip-pushed'],
+  report: [],
+  status: ['owner'],
+  'evidence record': ['data'],
+  'evidence verify': [],
+  'evidence log': [],
+  'verify-receipt': ['keys', 'sigstore', 'recompute', 'base'],
+  receipt: ['base', 'role', 'task', 'vault'],
+  hook: [],
+  watch: [],
+  connect: [],
+  mcp: [],
+};
+
+function refuseUnknownFlags(cmd, sub) {
+  if (!cmd) return;
+  const key = sub ? `${cmd} ${sub}` : cmd;
+  const accepted = ACCEPTED_FLAGS[key] ?? ACCEPTED_FLAGS[cmd];
+  if (!accepted) return;
+  const allow = new Set([...GLOBAL_FLAGS, ...accepted]);
+  const bad = Object.keys(flags).filter((k) => !allow.has(k));
+  if (!bad.length) return;
+  const named = bad.map((k) => `--${k}`).join(', ');
+  const ok = [...allow].sort().map((k) => `--${k}`).join(', ');
+  console.error(`proofline: unknown flag ${named}\naccepted: ${ok}`);
+  process.exit(2);
+}
+
 try {
   const [cmd, sub] = pos;
+  refuseUnknownFlags(cmd, sub);
   switch (cmd) {
     case 'setup': {
       const agent = flags.agent === undefined ? 'none' : flags.agent;

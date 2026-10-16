@@ -5,6 +5,7 @@ All notable project changes are recorded here. Dates use ISO 8601 (`YYYY-MM-DD`)
 ## [Unreleased]
 
 ### Added
+- Every subcommand refuses a flag it does not accept, exits 2, and names the unknown flag and the accepted ones. Nothing runs after that refusal (#33).
 - The pre-push hook gates the commit being pushed, at that sha, in a temporary worktree. It reads the local sha from stdin and does not gate the checked-out HEAD. The base is the most recent `proofline next` pin for the task, or the parent of that commit, and a refusal prints the base it used. `proofline next --base <rev>` records a newer pin. A worktree with no evidence still gates, and stale evidence in the pushing worktree cannot block a commit that passes at its own sha (#21, #22, #23).
 - `proofline contract sign` writes `proofline.json.sig`, a signature over the canonical contract by the agentkey owner role. `proofline contract verify-sig` checks it against `guard/owner.pub` only. Once that pin is present, `next`, `verify`, `gate`, `brief` and both hooks exit 2 with `contract not owner-signed` when the signature is missing, altered or from another key. `proofline contract propose` writes `proposals/<sha256>.diff` and prints the hash.
 - `proofline setup` installs the hooks, creates the owner key through agentkey and sets approvals to `.proofline/approvals`. `proofline task` writes a proposal from plain words and prints its hash. `proofline contract approve` shows the diff and, on y, writes the marker and applies the bytes. `proofline watch` prints the active task until the gate is PASS.
