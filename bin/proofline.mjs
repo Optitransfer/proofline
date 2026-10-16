@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Proofline CLI. Exit codes: 0 PASS/ok, 1 FAIL, 2 BLOCKED, 3 usage error.
 import fs from 'node:fs';
+import path from 'node:path';
 import * as P from '../src/index.mjs';
 import { verifyChain, readLog } from '../src/evidence.mjs';
 import { verifyReceipt } from '../src/verify-receipt.mjs';
@@ -29,6 +30,10 @@ const HELP = `proofline: independent V&V and delivery controller
   contract create --from spec.json      add a task contract (or --id --title [--phase] [--owner n] [--depends a,b] [--scope g1,g2])
   contract scaffold --title ... --scope a,b [--kind feature|docs|release] [--id TASK]
                                         print a task with the standard criteria and stop rules
+  contract merge <fragment.json> [--owners a=b,c=d]
+                                        append tasks and new owner rules; prints the sha256
+  contract coverage <REQUIREMENTS.md> [--contracts a.json,b.json]
+                                        one line per requirement id, or MISSING
   contract validate | show              validate also warns when a grep already matches on the base revision
   next [--owner <name>]                 the single next task with its full brief (marks it active);
                                         --owner: only that owner's tasks and unowned ones
@@ -75,6 +80,19 @@ try {
         const lines = [...errors, ...warnings.map((w) => `warning: ${w}`)];
         print({ valid: !errors.length, problems: errors, warnings }, lines.length ? lines.join('\n') : 'contract valid');
         process.exitCode = errors.length ? 1 : 0;
+      } else if (sub === 'merge') {
+        const frag = pos[2];
+        if (!frag) throw new Error('contract merge needs a fragment file');
+        const owners = flags.owners && flags.owners !== true ? String(flags.owners) : '';
+        const out = P.C.mergeContract(root, path.resolve(root, frag), { owners });
+        print(out, out.sha256);
+      } else if (sub === 'coverage') {
+        const req = pos[2];
+        if (!req) throw new Error('contract coverage needs a requirements file');
+        const contracts = flags.contracts && flags.contracts !== true ? String(flags.contracts).split(',').map((s) => s.trim()).filter(Boolean) : [];
+        const out = P.C.coverageReport(root, path.resolve(root, req), { contracts: contracts.map((f) => path.resolve(root, f)) });
+        print(out, out.lines.join('\n'));
+        process.exitCode = out.ok ? 0 : 1;
       } else if (sub === 'scaffold') {
         if (typeof flags.title !== 'string') throw new Error('scaffold needs --title');
         if (typeof flags.scope !== 'string') throw new Error('scaffold needs --scope');
