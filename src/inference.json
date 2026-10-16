@@ -1,0 +1,20 @@
+{
+  "changed_tests": [
+    "(^|/)(test|tests)/",
+    "_test\\.[^/]+$",
+    "\\.test\\.[^/]+$",
+    "\\.spec\\.[^/]+$",
+    "(^|/)test_[^/]+\\.py$"
+  ],
+  "node": {
+    "manifest": "package.json",
+    "script": "scripts.test",
+    "fallback_dev_dependencies": ["vitest", "jest"],
+    "fallback_commands": { "vitest": "vitest run", "jest": "jest" }
+  },
+  "rust": { "manifest": "Cargo.toml", "command": "cargo test", "toolchain": "cargo" },
+  "python": { "manifests": ["pytest.ini", "pyproject.toml"], "command": "pytest", "toolchain": "pytest" },
+  "go": { "manifest": "go.mod", "command": "go test ./...", "toolchain": "go" },
+  "gradle": { "manifest": "build.gradle" },
+  "dotnet": { "glob": "*.sln" }
+}
