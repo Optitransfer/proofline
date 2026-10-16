@@ -58,7 +58,8 @@ export function makeTask({ id, title, phase = 'implement', owner, depends_on = [
   if (!id || !title) throw new Error('task needs id and title');
   return {
     id, title, phase, ...(owner !== undefined ? { owner } : {}), depends_on, requirements, description,
-    scope: { allow: scope },
+    // a spec may give the allow list, or the contract's own shape { allow: [...] }; either way one level of allow
+    scope: { allow: Array.isArray(scope) ? scope : Array.isArray(scope?.allow) ? scope.allow : [String(scope)] },
     criteria: criteria.map((c, i) => ({ id: c.id || `${id}-AC${String(i + 1).padStart(2, '0')}`, mandatory: c.mandatory !== false, ...c })),
     stop_rules: stop_rules.length ? stop_rules : ['If any metric misses its threshold: STOP, report the measured number, a per-stage trace and file:line. Do not start the next task.'],
   };
@@ -101,6 +102,7 @@ export function validate(c) {
     if (!PHASES.includes(t.phase)) errs.push(`${t.id}: unknown phase ${t.phase}`);
     if (t.owner !== undefined && !isName(t.owner)) errs.push(`${t.id}: owner must be a name`);
     else if (t.owner !== undefined && Array.isArray(owners) && !owners.includes(t.owner)) errs.push(`${t.id}: owner ${t.owner} is not in defaults.owners (${owners.join(', ')})`);
+    if (!(Array.isArray(t.scope?.allow) && t.scope.allow.every((g) => typeof g === 'string' && g))) errs.push(`${t.id}: scope.allow must be a list of path patterns`);
     if (!t.criteria?.length) errs.push(`${t.id}: no acceptance criteria`);
     for (const a of t.criteria || []) {
       const v = a.verifier;
