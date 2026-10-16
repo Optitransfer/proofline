@@ -213,7 +213,8 @@ try {
       }
       let lines;
       if (sub === 'pre-push' && !process.stdin.isTTY) lines = fs.readFileSync(0, 'utf8').split('\n').filter((l) => l.trim());
-      const r = sub === 'pre-commit' ? P.hookPreCommit(root) : sub === 'pre-push' ? P.hookPrePush(root, { lines }) : null;
+      const pushUrl = typeof pos[3] === 'string' ? pos[3] : undefined;
+      const r = sub === 'pre-commit' ? P.hookPreCommit(root) : sub === 'pre-push' ? P.hookPrePush(root, { lines, pushUrl }) : null;
       if (!r) { process.exitCode = 3; break; }
       if (!r.ok) { console.error(`proofline ${sub}: REFUSED\n${r.msg}\n(There is no bypass. Fix the cause.)`); process.exitCode = 1; }
       else if (r.msg) console.error(r.msg);
