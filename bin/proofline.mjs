@@ -21,7 +21,8 @@ const base = () => { if (flags.base === true) throw new Error('--base needs a re
 const claims = () => flags['claims-file'] ? fs.readFileSync(flags['claims-file'], 'utf8') : flags.claims === true ? fs.readFileSync(0, 'utf8') : flags.claims;
 
 const HELP = `proofline — independent V&V and delivery controller
-  init [--no-hooks]                     create proofline.json, .proofline/, install git hooks
+  init [--no-hooks] [--approvals <dir>] create proofline.json, .proofline/, install git hooks;
+                                        --approvals sets the directory of owner markers (re-runnable)
   contract create --from spec.json      add a task contract (or --id --title [--phase] [--owner n] [--depends a,b] [--scope g1,g2])
   contract validate | show
   next [--owner <name>]                 the single next task with its full brief (marks it active);
@@ -44,7 +45,12 @@ Global: --json  --root <dir>   Exit: 0 PASS, 1 FAIL, 2 BLOCKED, 3 usage`;
 try {
   const [cmd, sub] = pos;
   switch (cmd) {
-    case 'init': { const r = P.init(root, { hooks: !flags['no-hooks'] }); print(r, `initialised ${root}${r.made.map((m) => `\n  ${m}`).join('')}`); break; }
+    case 'init': {
+      if (flags.approvals === true) throw new Error('--approvals needs a directory');
+      const r = P.init(root, { hooks: !flags['no-hooks'], approvals: flags.approvals });
+      print(r, `initialised ${root}${r.made.map((m) => `\n  ${m}`).join('')}`);
+      break;
+    }
     case 'contract': {
       if (sub === 'create') {
         const spec = flags.from ? JSON.parse(fs.readFileSync(flags.from, 'utf8')) : { id: flags.id, title: flags.title, phase: flags.phase, owner: owner(), description: flags.description || '', depends_on: flags.depends ? String(flags.depends).split(',') : [], scope: flags.scope ? String(flags.scope).split(',') : undefined, criteria: [] };

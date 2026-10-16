@@ -36,6 +36,8 @@ Two or more builders can share one contract. A task may carry an `owner`, and `d
 
 `init` installs `pre-commit` (forbidden actions and contract weakening vs HEAD) and `pre-push` (the active task must gate PASS). If the repository already has one of these hooks and it is not proofline's, `init` keeps it as `<hook>.proofline-prev` and says so. The installed hook runs it first, with the same arguments and stdin; if it fails, its exit code stands and the gate does not run. Running `init` again changes nothing. If both `<hook>` and `<hook>.proofline-prev` exist and neither is proofline's, `init` stops rather than lose one.
 
+A contract change is refused unless an approval marker is present. `proofline init --approvals <dir>` (re-runnable) stores that directory in `.proofline/config.json`, which is never committed. The marker is a file in that directory named with the sha256 of the staged `proofline.json` bytes. The refusal prints the weakenings, the sha256 and the marker path. A marker named for any other bytes does not count, and what else the commit stages makes no difference. With no directory configured, every contract change is refused. There is no bypass.
+
 ## Base revision
 
 Every diff check (forbidden scan, `scope`, `test_red_green`, contract weakening) compares the base revision with the working tree. The base is taken from, first match wins:

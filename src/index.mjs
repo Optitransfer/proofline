@@ -5,7 +5,8 @@ import * as C from './contract.mjs';
 import * as E from './engine.mjs';
 import { record, readLog, verifyChain } from './evidence.mjs';
 import { scanForbidden } from './forbidden.mjs';
-import { git, readJson } from './util.mjs';
+import { spawnSync } from 'node:child_process';
+import { git, readJson, sha256 } from './util.mjs';
 import { resolveBase } from './checks.mjs';
 
 export { C, E };
@@ -15,10 +16,18 @@ export function findRoot(start = process.cwd()) {
   return r.ok ? r.out : start;
 }
 
-export function init(root, { hooks = true, project } = {}) {
+export function init(root, { hooks = true, project, approvals } = {}) {
   const made = [];
   if (!fs.existsSync(C.contractPath(root))) { C.save(root, C.skeleton(project || path.basename(root))); made.push('proofline.json'); }
   fs.mkdirSync(path.join(root, '.proofline'), { recursive: true });
+  if (approvals !== undefined) {
+    if (typeof approvals !== 'string' || !approvals.trim()) throw new Error('--approvals needs a directory');
+    const cfg = path.join(root, '.proofline', 'config.json');
+    let cur = {}; try { cur = JSON.parse(fs.readFileSync(cfg, 'utf8')); } catch { cur = {}; }
+    cur.approvals = path.resolve(approvals);
+    fs.writeFileSync(cfg, JSON.stringify(cur, null, 2) + '\n');
+    made.push('.proofline/config.json');
+  }
   const gi = path.join(root, '.gitignore');
   const cur = fs.existsSync(gi) ? fs.readFileSync(gi, 'utf8') : '';
   if (!/^\.proofline\/?$/m.test(cur)) { fs.appendFileSync(gi, (cur && !cur.endsWith('\n') ? '\n' : '') + '.proofline/\n'); made.push('.gitignore'); }
@@ -132,15 +141,52 @@ export function report(root, taskId) {
   return { markdown: fs.readFileSync(f, 'utf8'), json: readJson(path.join(root, '.proofline', 'reports', `${taskId}-latest.json`)) };
 }
 
-/** pre-commit: forbidden actions + contract weakening in the working tree vs HEAD. Fast. */
+/** Bytes of the staged proofline.json, or null when it is not in the index. */
+function stagedContract(root) {
+  const r = spawnSync('git', ['cat-file', 'blob', ':proofline.json'], { cwd: root, maxBuffer: 64 << 20 });
+  return r.status === 0 ? r.stdout : null;
+}
+
+/** Directory from `init --approvals`, stored in .proofline/config.json. Null when unset. */
+export function approvalsDir(root) {
+  try {
+    const c = JSON.parse(fs.readFileSync(path.join(root, '.proofline', 'config.json'), 'utf8'));
+    return typeof c.approvals === 'string' && c.approvals.trim() ? c.approvals : null;
+  } catch { return null; }
+}
+
+/** pre-commit: forbidden actions + contract weakening of the staged contract vs HEAD. Fast.
+ *  A weakening passes only when an approval marker named with the sha256 of those bytes exists.
+ *  What else is staged does not matter. There is no bypass. */
 export function hookPreCommit(root) {
   const c = C.load(root);
   const head = git(['rev-parse', '--verify', '--quiet', 'HEAD'], root);
   if (!head.ok) return { ok: true, msg: 'first commit' };
   const f = scanForbidden(root, 'HEAD', { ...C.DEFAULT_FORBIDDEN, ...(c.forbidden || {}) });
-  let base = null; const s = git(['show', 'HEAD:proofline.json'], root); if (s.ok) try { base = JSON.parse(s.out); } catch {}
-  const w = C.weakenings(base, c);
-  const msgs = [...f.map((x) => `forbidden ${x.rule}: ${x.file}: ${x.line} (${x.why})`), ...w.map((x) => `contract weakened: ${x}`)];
+  const staged = stagedContract(root);
+  let w = [];
+  let note = '';
+  if (staged) {
+    let cur; try { cur = JSON.parse(staged.toString('utf8')); } catch { return { ok: false, msg: 'staged proofline.json is not valid JSON' }; }
+    let base = null; const s = git(['show', 'HEAD:proofline.json'], root); if (s.ok) try { base = JSON.parse(s.out); } catch {}
+    w = C.weakenings(base, cur);
+    if (w.length) {
+      const hex = sha256(staged);
+      const dir = approvalsDir(root);
+      const marker = dir ? path.join(dir, hex) : null;
+      // lstat: a symlink is not a regular file, so it cannot approve these bytes.
+      let approved = false;
+      if (marker) { try { approved = fs.lstatSync(marker).isFile(); } catch { approved = false; } }
+      if (approved) w = [];
+      else note = [`sha256 ${hex}`, marker ? `marker ${marker}` : 'marker (no approvals directory configured)'].join('\n');
+    }
+  } else if (git(['cat-file', '-e', 'HEAD:proofline.json'], root).ok) {
+    // Removed from the index. There are no staged bytes, so no marker name can approve the removal.
+    let base = null; const s = git(['show', 'HEAD:proofline.json'], root); if (s.ok) try { base = JSON.parse(s.out); } catch {}
+    w = C.weakenings(base, { tasks: [] });
+    note = 'staged proofline.json is absent, so no approval marker can be bound to its bytes';
+  }
+  const msgs = [...f.map((x) => `forbidden ${x.rule}: ${x.file}: ${x.line} (${x.why})`), ...w.map((x) => `contract weakened: ${x}`), ...(note ? [note] : [])];
   return { ok: msgs.length === 0, msg: msgs.join('\n') };
 }
 
