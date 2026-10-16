@@ -1909,7 +1909,7 @@
       "requirements": [
         "TB-R02"
       ],
-      "description": "Finding of 2026-10-16: .proofline/active kept naming a task after that task's commits were on main, so the pre-push hook gated the finished task against every later branch (its scope criterion failed on the later task's files) and refused pushes that had nothing to do with it. Fix: `next`, `verify` and the hooks treat an active task as ended once its head is an ancestor of origin/main (or its pushed criterion has a PASS record), clear the file and say so; the hook derives the task to gate from the commits being pushed ((TASK-ID) subject suffix or the Proofline-Task trailer) and falls back to the active task only for a commit that names none; a landed task is never gated. The README's hook section states which task a push is gated on.",
+      "description": "Finding of 2026-10-16: .proofline/active kept naming a task after that task's commits were on main, so the pre-push hook gated the finished task against every later branch (its scope criterion failed on the later task's files) and refused pushes that had nothing to do with it. Fix: `next`, `verify` and the hooks treat an active task as ended once its head is an ancestor of origin/main (or its pushed criterion has a PASS record), clear the file and say so; the hook derives the task to gate from the commits being pushed ((TASK-ID) subject suffix or the Proofline-Task trailer) and falls back to the active task only for a commit that names none; a landed task is never gated. The README's hook section states which task a push is gated on. Bootstrap: until the first task_started record exists, a push whose commits name no task passes with the next command printed, so the owner can push init, the baseline and the approved contract; from the first start on, every push names its task or is refused. The demo in examples/ follows the same order.",
       "scope": {
         "allow": [
           "src/**",
@@ -1917,7 +1917,8 @@
           "test/**",
           "docs/**",
           "README.md",
-          "CHANGELOG.md"
+          "CHANGELOG.md",
+          "examples/**"
         ]
       },
       "criteria": [
@@ -1932,7 +1933,7 @@
         },
         {
           "id": "PL-13-AC02",
-          "statement": "a commit that names no task is gated on the active task, and a push with no active task and no named task is refused with the next command printed",
+          "statement": "a commit that names no task is gated on the active task; with no active task and no named task the push is refused with the next command printed, except before any task has a start record (the owner setting the repository up: init, baseline, approved contract), when it passes and prints the next command",
           "verifier": {
             "type": "test_red_green",
             "test_file": "test/hook_task_from_commit.test.mjs",
