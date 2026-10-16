@@ -183,6 +183,10 @@ Always on: forbidden-action scan of the diff (skip/only/todo, raised timeouts, n
 
 Two or more builders can share one contract. A task may carry an `owner`, and `defaults.owners` may list the names (`contract validate` then refuses an owner outside the list). `next --owner <name>` (MCP: `task_next` with `owner`) hands out only that owner's tasks and unowned ones, never another owner's; the phase gate applies to that lane, and `depends_on` still waits on any owner's task. `status --owner <name>` and `brief <TASK> --owner <name>` take the same filter, and `brief` refuses another owner's task. Without `--owner`, nothing changes.
 
+### Contract scaffold
+
+`proofline contract scaffold --title ... --scope a,b [--kind feature|docs|release]` prints a task with the standard criteria and the default stop rules. It does not write the contract. A feature gets a red-then-green test and the suite; docs gets a grep; release gets one command. Scope and pushed are always there. `contract validate` refuses a task with no stop rules, a task with no scope criterion, a criterion whose file, path, test file or entry sits outside that scope, a double-quoted `sh -c` or `bash -c` command that contains `$`, and a red-then-green criterion with no test file. A grep whose pattern already matches on the base revision is a warning, and the warning names that revision. `brief` and `steer` still run when a loaded task has no stop rules.
+
 
 ### Git hooks
 

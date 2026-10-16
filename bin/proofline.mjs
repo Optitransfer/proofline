@@ -27,7 +27,9 @@ const HELP = `proofline: independent V&V and delivery controller
   init [--no-hooks] [--approvals <dir>] create proofline.json, .proofline/, install git hooks;
                                         --approvals sets the directory of owner markers (re-runnable)
   contract create --from spec.json      add a task contract (or --id --title [--phase] [--owner n] [--depends a,b] [--scope g1,g2])
-  contract validate | show
+  contract scaffold --title ... --scope a,b [--kind feature|docs|release] [--id TASK]
+                                        print a task with the standard criteria and stop rules
+  contract validate | show              validate also warns when a grep already matches on the base revision
   next [--owner <name>]                 the single next task with its full brief (marks it active);
                                         --owner: only that owner's tasks and unowned ones
   brief <TASK> [--owner <name>] [--base <rev>]  brief for a task, with the base verify will use
@@ -67,7 +69,20 @@ try {
         const out = specs.map((s) => P.contractCreate(root, s));
         print(out, out.map((o) => `${o.task.id}: ${o.valid ? 'valid' : 'INCOMPLETE — ' + o.problems.join('; ')}`).join('\n'));
         process.exitCode = out.every((o) => o.valid) ? 0 : 1;
-      } else if (sub === 'validate') { const e = P.C.validate(P.C.load(root)); print({ valid: !e.length, problems: e }, e.length ? e.join('\n') : 'contract valid'); process.exitCode = e.length ? 1 : 0; }
+      } else if (sub === 'validate') {
+        const loaded = P.C.load(root);
+        const { errors, warnings } = P.C.lint(loaded, { root, base: base() || P.C.defaultBase(loaded) });
+        const lines = [...errors, ...warnings.map((w) => `warning: ${w}`)];
+        print({ valid: !errors.length, problems: errors, warnings }, lines.length ? lines.join('\n') : 'contract valid');
+        process.exitCode = errors.length ? 1 : 0;
+      } else if (sub === 'scaffold') {
+        if (typeof flags.title !== 'string') throw new Error('scaffold needs --title');
+        if (typeof flags.scope !== 'string') throw new Error('scaffold needs --scope');
+        const kind = flags.kind && flags.kind !== true ? String(flags.kind) : 'feature';
+        const id = typeof flags.id === 'string' ? flags.id : 'TASK';
+        const task = P.C.scaffoldTask({ title: flags.title, scope: flags.scope, kind, id });
+        print(task, JSON.stringify(task, null, 2));
+      }
       else if (sub === 'show') print(P.C.load(root));
       else { console.error(HELP); process.exitCode = 3; }
       break;

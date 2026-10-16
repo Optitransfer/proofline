@@ -199,7 +199,7 @@ export function steer(v, c) {
   }
   for (const f of v.forbidden) L.push(`${n++}. FORBIDDEN ${f.rule} in ${f.file}: ${f.line}\n   Why: ${f.why}. Next step: revert it and fix the underlying cause.`);
   for (const cr of v.claims.filter((x) => !x.ok)) L.push(`${n++}. CLAIM REJECTED: "${cr.claim}"\n   ${cr.issues.join('\n   ')}\n   Next step: report only what the evidence shows.`);
-  L.push('', 'STOP RULES:', ...t.stop_rules.map((s) => `- ${s}`), '- After fixing, call verify again. Max corrective cycles: ' + (c.defaults?.max_corrective_cycles ?? 3) + '; after that report BLOCKED with root cause, what you tried, what you need.');
+  L.push('', 'STOP RULES:', ...(Array.isArray(t.stop_rules) ? t.stop_rules : []).map((s) => `- ${s}`), '- After fixing, call verify again. Max corrective cycles: ' + (c.defaults?.max_corrective_cycles ?? 3) + '; after that report BLOCKED with root cause, what you tried, what you need.');
   return L.join('\n');
 }
 
@@ -327,6 +327,6 @@ export function brief(c, t, st = {}) {
     '## Mandatory loop', '1. Write the failing test(s) first and run them: paste the failing output.', '2. Implement the cause-level fix on the default path (wired in, default config).', `3. \`proofline verify ${t.id}\` → fix until PASS. Read the corrective instruction it prints.`, `4. Commit (one task per commit), push to ${pushTarget(c, t).remote} ${pushTarget(c, t).branch} with hooks on.`, `5. \`proofline gate ${t.id} --claims "<your report line>"\` and paste the report.`, '',
     '## Forbidden (detected automatically)', `- skip/only/todo in tests; raising timeouts; net removal of assertions; deleting tests; --no-verify; env bypasses (${(f.bypass_env || []).join(', ')}); lowering protected values (${(f.protected_values || []).map((p) => p.file).join(', ') || 'none configured'}); editing thresholds/commands/criteria in proofline.json.`, '',
     '## Owner rules', ...(c.owner_rules || []).map((r) => `- ${r}`), '',
-    '## Stop rules', ...t.stop_rules.map((s) => `- ${s}`), '',
+    '## Stop rules', ...(Array.isArray(t.stop_rules) ? t.stop_rules : []).map((s) => `- ${s}`), '',
     '## Report line (exact format)', `${t.id} | done/partial/not done/blocked | <commit> | <test names> | <metric=value vs target> | <what is missing>`].join('\n');
 }

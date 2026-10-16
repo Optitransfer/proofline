@@ -1,7 +1,7 @@
 // Contract + plan model: proofline.json at the repo root (committed).
 import fs from 'node:fs';
 import path from 'node:path';
-import { readJson, writeJson, sha256, canon } from './util.mjs';
+import { readJson, writeJson, sha256, canon, git, matchAny } from './util.mjs';
 
 export const SCHEMA = 'proofline/1';
 export const PHASES = ['intake', 'design', 'plan', 'implement', 'verify', 'integrate', 'release', 'monitor'];
@@ -11,6 +11,26 @@ export const STATUS = {
 };
 // Task status vocabulary (derived, never self-declared)
 export const TASK_STATUS = ['not_started', 'in_progress', 'verified', 'failed', 'blocked'];
+
+/** Stop rules a scaffolded task carries. brief and steer still run when a loaded task has none. */
+export const DEFAULT_STOP_RULES = [
+  "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
+  'If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item.',
+];
+
+const KINDS = ['feature', 'docs', 'release'];
+
+/** A path the scaffold can place inside scope. Prefer `prefer` when it already matches. */
+function slotted(allow, prefer) {
+  if (matchAny(prefer, allow)) return prefer;
+  for (const g of allow) {
+    if (g.endsWith('/**')) {
+      const p = `${g.slice(0, -3)}/change.test.mjs`;
+      if (matchAny(p, allow)) return p;
+    }
+  }
+  return prefer;
+}
 
 export const DEFAULT_FORBIDDEN = {
   test_skip_only: true,          // .skip( .only( {skip: test.todo  it.skip  xit(
@@ -65,6 +85,39 @@ export function makeTask({ id, title, phase = 'implement', owner, depends_on = [
   };
 }
 
+/**
+ * Print-ready task: standard criteria and the default stop rules, for an agent to fill in.
+ * kind feature: a red-then-green test and the suite. docs: a grep. release: one command.
+ * Scope and pushed are always present. Does not write the contract.
+ */
+export function scaffoldTask({ title, scope, kind = 'feature', id = 'TASK' } = {}) {
+  if (!title || !String(title).trim()) throw new Error('scaffold needs a title');
+  if (!KINDS.includes(kind)) throw new Error('--kind must be feature, docs or release');
+  const allow = String(scope ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!allow.length) throw new Error('scaffold needs a scope');
+  const criteria = [];
+  const add = (statement, verifier) => criteria.push({ statement, verifier });
+  if (kind === 'docs') {
+    const file = allow.find((g) => !/[*?]/.test(g)) || slotted(allow, 'README.md').replace(/change\.test\.mjs$/, 'change.md');
+    add('the docs name the change', { type: 'grep', file, pattern: 'CHANGE', must: 'present' });
+  } else if (kind === 'release') {
+    add('the release check exits 0', { type: 'command', cmd: 'npm test', expect_exit: 0 });
+  } else {
+    add('the new behavior fails on the base and passes now', { type: 'test_red_green', test_file: slotted(allow, 'test/change.test.mjs'), cmd: 'node --test {test}' });
+    add('suite green', { type: 'command', cmd: 'npm test', expect_exit: 0 });
+  }
+  add('Changes stay in scope', { type: 'scope' });
+  add('Committed and pushed to main', { type: 'pushed' });
+  return makeTask({ id, title, phase: kind === 'release' ? 'release' : 'implement', scope: allow, criteria, stop_rules: DEFAULT_STOP_RULES });
+}
+
+/** Double-quoted `sh -c` / `bash -c` whose quotes contain `$`. The verifier runs bash -c itself, so an outer shell would expand `$` first. */
+function expandingShell(cmd) {
+  if (typeof cmd !== 'string') return false;
+  const m = cmd.match(/(?:^|[;&|]\s*)(?:sh|bash)\s+-c\s+"([^"]*)"/);
+  return !!(m && m[1].includes('$'));
+}
+
 const isName = (x) => typeof x === 'string' && x.trim() !== '';
 
 /** A task belongs to an owner's lane when it is theirs or has no owner. No owner given: every task. */
@@ -115,6 +168,49 @@ export function validate(c) {
   for (const t of c.tasks || []) for (const d of t.depends_on || []) if (!ids.has(d)) errs.push(`${t.id}: depends on unknown ${d}`);
   if (topo(c.tasks || []) === null) errs.push('dependency cycle in task graph');
   return errs;
+}
+
+/** The shapes contract validate refuses, on top of validate(). The hook keeps validate() so a fixture without these fields still gates. */
+function lintErrors(c) {
+  const errors = [];
+  for (const t of c.tasks || []) {
+    if (!Array.isArray(t.stop_rules) || !t.stop_rules.length || t.stop_rules.some((s) => typeof s !== 'string' || !s.trim())) errors.push(`${t.id}: no stop_rules`);
+    if (!(t.criteria || []).some((a) => a?.verifier?.type === 'scope')) errors.push(`${t.id}: no scope criterion`);
+    const allow = Array.isArray(t.scope?.allow) ? t.scope.allow : [];
+    for (const a of t.criteria || []) {
+      const v = a.verifier;
+      if (!v) continue;
+      for (const key of ['file', 'path', 'test_file', 'entry']) {
+        const rel = v[key];
+        if (typeof rel !== 'string' || !rel || !allow.length) continue;
+        if (!matchAny(rel, allow)) errors.push(`${t.id}/${a.id}: ${key} ${rel} is outside scope`);
+      }
+      if (expandingShell(v.cmd)) errors.push(`${t.id}/${a.id}: command is a double-quoted sh -c or bash -c that contains $`);
+    }
+  }
+  return errors;
+}
+
+/** Structural errors from validate, the scaffold lint, and a warning when a grep already matches on the base revision. */
+export function lint(c, { root, base } = {}) {
+  const errors = [...validate(c), ...lintErrors(c)];
+  const warnings = [];
+  if (!root || !base) return { errors, warnings };
+  const rev = git(['rev-parse', '--verify', `${base}^{commit}`], root);
+  if (!rev.ok) return { errors, warnings };
+  const sha = rev.out;
+  for (const t of c.tasks || []) {
+    for (const a of t.criteria || []) {
+      const v = a.verifier;
+      if (v?.type !== 'grep' || typeof v.file !== 'string' || typeof v.pattern !== 'string') continue;
+      const shown = git(['show', `${sha}:${v.file}`], root);
+      if (!shown.ok) continue;
+      let re;
+      try { re = new RegExp(v.pattern, v.flags || 'm'); } catch { continue; }
+      if (re.test(shown.out)) warnings.push(`${t.id}/${a.id}: grep /${v.pattern}/ already matches ${v.file} on ${sha}`);
+    }
+  }
+  return { errors, warnings };
 }
 
 export function topo(tasks) {
