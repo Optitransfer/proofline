@@ -1,6 +1,9 @@
 // Minimal MCP server (JSON-RPC 2.0 over newline-delimited stdio). Zero dependencies.
 import readline from 'node:readline';
 import * as P from './index.mjs';
+import { receiptZeroConfig } from './infer.mjs';
+import { verifyReceipt } from './verify-receipt.mjs';
+import { attachMemory, probeDigest, receiptNote, writeReceiptNote } from './vault.mjs';
 
 const BASE = { type: 'string', description: 'The revision the task started from. Needed in a fresh clone unless task_next pinned it or HEAD carries a Proofline-Base: trailer.' };
 const FRESH = { type: 'boolean', description: 'Run every check again, ignoring results reused under defaults.reuse_results.' };
@@ -13,7 +16,23 @@ const TOOLS = [
   { name: 'gate', description: 'Release decision PASS/FAIL/BLOCKED with Markdown+JSON evidence report.', inputSchema: { type: 'object', properties: { task: { type: 'string' }, claims: { type: 'string' }, base: BASE, fresh: FRESH }, required: ['task'] } },
   { name: 'report', description: 'Latest gate report for a task (Markdown).', inputSchema: { type: 'object', properties: { task: { type: 'string' } }, required: ['task'] } },
   { name: 'status', description: 'Task and phase status, evidence-chain integrity.', inputSchema: { type: 'object', properties: { owner: OWNER } } },
+  { name: 'receipt', description: 'Infer a receipt from the base revision. Returns the same JSON the CLI prints with --json.', inputSchema: { type: 'object', properties: { task: { type: 'string' }, base: { type: 'string', description: 'The revision the receipt is inferred from.' }, role: { type: 'string' }, vault: { type: 'boolean', description: 'Attach a hivevault digest and write the note when the daemon answers.' } } } },
+  { name: 'verify_receipt', description: 'Check a DSSE receipt envelope offline. Returns the same JSON verify-receipt prints with --json.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, recompute: { type: 'boolean' }, base: BASE }, required: ['path'] } },
 ];
+
+async function runReceipt(root, a) {
+  const receipt = receiptZeroConfig(root, { base: a.base });
+  if (a.vault !== true) return receipt;
+  const digest = await probeDigest();
+  const attached = attachMemory(receipt, digest);
+  const note = receiptNote({
+    receipt: attached.receipt,
+    role: typeof a.role === 'string' && a.role ? a.role : 'agent',
+    subject: typeof a.task === 'string' ? a.task : '',
+  });
+  await writeReceiptNote(note, { vault: true });
+  return attached.receipt;
+}
 
 export function handle(root, msg) {
   const { id, method, params = {} } = msg;
@@ -33,6 +52,10 @@ export function handle(root, msg) {
         case 'gate': r = P.E.gate(root, a.task, { claims: a.claims, base: a.base, fresh: a.fresh === true }); break;
         case 'report': r = P.report(root, a.task); break;
         case 'status': r = P.status(root, { owner: a.owner }); break;
+        case 'receipt':
+          return runReceipt(root, a).then((got) => ok({ content: [{ type: 'text', text: JSON.stringify(got, null, 2) }], isError: false })).catch((e) => ok({ content: [{ type: 'text', text: `error: ${e.message}` }], isError: true }));
+        case 'verify_receipt':
+          return verifyReceipt(a.path, { root, recompute: a.recompute === true, base: a.base }).then((got) => ok({ content: [{ type: 'text', text: JSON.stringify(got, null, 2) }], isError: false })).catch((e) => ok({ content: [{ type: 'text', text: `error: ${e.message}` }], isError: true }));
         default: return { jsonrpc: '2.0', id, error: { code: -32601, message: `unknown tool ${params.name}` } };
       }
       const text = r.brief ? r.brief + '\n\n' + JSON.stringify({ task: r.task, phase: r.phase }) : r.corrective_prompt ? `DECISION: ${r.decision}\n\n${r.corrective_prompt}\n\n${JSON.stringify({ decision: r.decision, failing: r.failing, blocked: r.blocked, measured: r.measured })}` : r.markdown || JSON.stringify(r, null, 2);
@@ -45,11 +68,16 @@ export function handle(root, msg) {
 
 export function serve(root) {
   const rl = readline.createInterface({ input: process.stdin });
+  let chain = Promise.resolve();
   rl.on('line', (line) => {
-    if (!line.trim()) return;
-    let msg; try { msg = JSON.parse(line); } catch { process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } }) + '\n'); return; }
-    const r = handle(root, msg);
-    if (r) process.stdout.write(JSON.stringify(r) + '\n');
+    chain = chain.then(async () => {
+      if (!line.trim()) return;
+      let msg;
+      try { msg = JSON.parse(line); }
+      catch { process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } }) + '\n'); return; }
+      const r = await Promise.resolve(handle(root, msg));
+      if (r) process.stdout.write(JSON.stringify(r) + '\n');
+    });
   });
-  return new Promise((res) => rl.on('close', res));
+  return new Promise((res) => rl.on('close', () => chain.then(res)));
 }

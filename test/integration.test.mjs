@@ -21,7 +21,7 @@ test('CLI exit codes: 0 PASS, 1 FAIL, 2 BLOCKED; --json output', () => {
   // The work is uncommitted on top of origin/main, so that is the base the tasks started from.
   assert.equal(run('gate', 'A', '--base', 'origin/main').status, 0); assert.equal(run('gate', 'B', '--base', 'origin/main').status, 1); assert.equal(run('gate', 'C', '--base', 'origin/main').status, 2);
   const j = JSON.parse(run('gate', 'B', '--json', '--base', 'origin/main').stdout); assert.equal(j.decision, 'FAIL');
-  assert.equal(JSON.parse(run('next', '--json').stdout).task, 'B', 'A is verified, B is next');
+  assert.equal(JSON.parse(run('next', '--json').stdout).task, 'B', 'A is verified and the next task follows');
 });
 
 test('hooks: pre-commit refuses a skipped test; bypass env var does not help', () => {
@@ -59,7 +59,7 @@ test('MCP server: initialize, tools/list, task_next and verify over stdio', asyn
   const res = out.trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(res.length, 4);
   assert.equal(res[0].result.serverInfo.name, 'proofline');
-  assert.deepEqual(res[1].result.tools.map((t) => t.name).sort(), ['contract_create', 'evidence_record', 'gate', 'report', 'status', 'task_next', 'verify']);
+  assert.deepEqual(res[1].result.tools.map((t) => t.name).sort(), ['contract_create', 'evidence_record', 'gate', 'receipt', 'report', 'status', 'task_next', 'verify', 'verify_receipt']);
   assert.match(res[2].result.content[0].text, /# TASK A/);
   assert.match(res[3].result.content[0].text, /DECISION: PASS/);
 });
