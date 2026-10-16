@@ -6,7 +6,7 @@ import * as E from './engine.mjs';
 import { record, readLog, verifyChain } from './evidence.mjs';
 import { scanForbidden } from './forbidden.mjs';
 import { spawnSync } from 'node:child_process';
-import { git, readJson, sha256 } from './util.mjs';
+import { git, readJson, approvalMarker } from './util.mjs';
 import { resolveBase } from './checks.mjs';
 
 export { C, E };
@@ -171,14 +171,10 @@ export function hookPreCommit(root) {
     let base = null; const s = git(['show', 'HEAD:proofline.json'], root); if (s.ok) try { base = JSON.parse(s.out); } catch {}
     w = C.weakenings(base, cur);
     if (w.length) {
-      const hex = sha256(staged);
-      const dir = approvalsDir(root);
-      const marker = dir ? path.join(dir, hex) : null;
-      // lstat: a symlink is not a regular file, so it cannot approve these bytes.
-      let approved = false;
-      if (marker) { try { approved = fs.lstatSync(marker).isFile(); } catch { approved = false; } }
-      if (approved) w = [];
-      else note = [`sha256 ${hex}`, marker ? `marker ${marker}` : 'marker (no approvals directory configured)'].join('\n');
+      // Same check as verify and gate: a regular file named with the sha256 of these bytes.
+      const mark = approvalMarker(root, staged);
+      if (mark.approved) w = [];
+      else note = [`sha256 ${mark.hex}`, mark.marker ? `marker ${mark.marker}` : 'marker (no approvals directory configured)'].join('\n');
     }
   } else if (git(['cat-file', '-e', 'HEAD:proofline.json'], root).ok) {
     // Removed from the index. There are no staged bytes, so no marker name can approve the removal.

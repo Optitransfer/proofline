@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import * as P from '../src/index.mjs';
+import { sha256 } from '../src/util.mjs';
 import { repo, write, addTask, commitAll, sh } from './helpers.mjs';
 
 const BENCH = (v) => `console.log('progress'); console.log(JSON.stringify({ flushMs: ${v}, writers1: { p50: 12 }, writers32: { savesPerSec: 640 } }));\n`;
@@ -89,6 +91,35 @@ test('contract weakened vs base is BLOCKED', () => {
   P.taskNext(r);
   const c = P.C.load(r); c.tasks[0].criteria[0].verifier.value = 5000; P.C.save(r, c);
   const g = P.E.verifyTask(r, 'M'); assert.equal(g.decision, 'BLOCKED'); assert.match(g.blocked.join(), /threshold loosened/); assert.equal(g.blocked.length, 1, g.blocked.join('\n'));
+});
+
+test('a marker for the current contract bytes approves the weakenings and names its path', () => {
+  const r = repo({ files: { 'bench/b.mjs': BENCH(1200) } });
+  addTask(r, { id: 'M', title: 'm', criteria: [{ verifier: { type: 'metric', cmd: 'node bench/b.mjs', key: 'flushMs', op: '<', value: 1000 } }] });
+  commitAll(r, 'contract'); sh(r, 'push', '-q', 'origin', 'main');
+  P.taskNext(r);
+  const c = P.C.load(r); c.tasks[0].criteria[0].verifier.value = 5000; P.C.save(r, c);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pl-approve-'));
+  P.init(r, { hooks: false, approvals: dir });
+  const raw = fs.readFileSync(path.join(r, 'proofline.json'));
+  const hex = sha256(raw);
+  const markerPath = path.join(dir, hex);
+  fs.writeFileSync(path.join(dir, sha256('other bytes')), '');
+  let g = P.E.verifyTask(r, 'M');
+  assert.equal(g.decision, 'BLOCKED');
+  assert.match(g.blocked.join('\n'), /threshold loosened/);
+  fs.symlinkSync(path.join(dir, sha256('other bytes')), markerPath);
+  g = P.E.verifyTask(r, 'M');
+  assert.equal(g.decision, 'BLOCKED', 'a symlink is not a marker');
+  fs.unlinkSync(markerPath);
+  fs.writeFileSync(markerPath, '');
+  g = P.E.gate(r, 'M');
+  assert.equal(g.decision, 'PASS', [...g.blocked, ...g.failing].join('\n'));
+  assert.equal(g.contract_change, 'approved');
+  assert.equal(g.marker, markerPath);
+  assert.match(g.weakenings.join('\n'), /threshold loosened/);
+  assert.equal(g.blocked.some((b) => b.includes('weakened')), false);
+  assert.match(fs.readFileSync(g.report, 'utf8'), new RegExp(`approved, marker ${markerPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
 });
 
 test('tampered evidence log BLOCKS the gate', () => {

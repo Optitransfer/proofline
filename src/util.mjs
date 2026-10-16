@@ -5,6 +5,21 @@ import path from 'node:path';
 
 export const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
+/** Owner marker for these exact bytes. The directory comes from `init --approvals`. A symlink is not a regular file. */
+export function approvalMarker(root, bytes) {
+  let dir = null;
+  try {
+    const c = JSON.parse(fs.readFileSync(path.join(root, '.proofline', 'config.json'), 'utf8'));
+    if (typeof c.approvals === 'string' && c.approvals.trim()) dir = c.approvals;
+  } catch { dir = null; }
+  if (!bytes) return { hex: null, marker: null, approved: false };
+  const hex = sha256(bytes);
+  const marker = dir ? path.join(dir, hex) : null;
+  let approved = false;
+  if (marker) { try { approved = fs.lstatSync(marker).isFile(); } catch { approved = false; } }
+  return { hex, marker, approved };
+}
+
 /** Stable JSON (sorted keys) so hashes are reproducible. */
 export function canon(v) {
   if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
@@ -17,6 +32,8 @@ export function run(cmd, { cwd, timeoutS = 600, env } = {}) {
   const t = performance.now();
   // NODE_TEST_CONTEXT leaks from an enclosing `node --test` and makes a nested `node --test` exit 0 regardless of failures.
   const e = { ...process.env, ...env }; delete e.NODE_TEST_CONTEXT;
+  // A pre-push hook exports GIT_DIR. A test or command that inits its own repository must not use it.
+  for (const k of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_PREFIX', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY', 'GIT_NAMESPACE', 'GIT_QUARANTINE_PATH']) delete e[k];
   const r = spawnSync('bash', ['-c', cmd], { cwd, encoding: 'utf8', timeout: timeoutS * 1000, env: e, maxBuffer: 64 << 20 });
   const ms = Math.round(performance.now() - t);
   const timedOut = r.error?.code === 'ETIMEDOUT';

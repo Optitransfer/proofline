@@ -38,6 +38,8 @@ Two or more builders can share one contract. A task may carry an `owner`, and `d
 
 A contract change is refused unless an approval marker is present. `proofline init --approvals <dir>` (re-runnable) stores that directory in `.proofline/config.json`, which is never committed. The marker is a file in that directory named with the sha256 of the staged `proofline.json` bytes. The refusal prints the weakenings, the sha256 and the marker path. A marker named for any other bytes does not count, and what else the commit stages makes no difference. With no directory configured, every contract change is refused. There is no bypass.
 
+`verify` and `gate` read the same marker for the current `proofline.json` bytes. When that marker is a regular file, the weakenings are an approved contract change: the report names the marker path, and the decision is not blocked. A missing marker, a marker for other bytes, or a symlink still blocks.
+
 ## Base revision
 
 Every diff check (forbidden scan, `scope`, `test_red_green`, contract weakening) compares the base revision with the working tree. The base is taken from, first match wins:

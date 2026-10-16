@@ -1,7 +1,7 @@
 // verify → steer → gate, plus project-cycle planning (status, next, brief).
 import fs from 'node:fs';
 import path from 'node:path';
-import { git, writeJson, sha256 } from './util.mjs';
+import { git, writeJson, sha256, approvalMarker } from './util.mjs';
 import * as C from './contract.mjs';
 import { verifiers, resolveBase, changedFiles } from './checks.mjs';
 import { scanForbidden } from './forbidden.mjs';
@@ -116,14 +116,25 @@ export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: e
   if (base) { const s = git(['show', `${base}:proofline.json`], root); if (s.ok) try { baseContract = JSON.parse(s.out); } catch {} }
   const weak = C.weakenings(baseContract, c);
   // The forbidden scan skips proofline.json (it declares the deny-list); a contract change is reported here instead.
-  const contractChange = !base ? 'unknown' : !baseContract ? 'added' : C.contractHash(baseContract) === C.contractHash(c) ? 'unchanged' : 'changed';
+  let contractChange = !base ? 'unknown' : !baseContract ? 'added' : C.contractHash(baseContract) === C.contractHash(c) ? 'unchanged' : 'changed';
+  let marker = null;
+  const approveWeakening = () => {
+    if (!weak.length) return false;
+    let raw = null;
+    try { raw = fs.readFileSync(path.join(root, 'proofline.json')); } catch { raw = null; }
+    const mark = approvalMarker(root, raw);
+    if (!mark.approved) return false;
+    marker = mark.marker;
+    contractChange = 'approved';
+    return true;
+  };
   const chain = verifyChain(root);
 
   const blocked = [], failing = [];
   if (errs.length) blocked.push(...errs.map((e) => `contract invalid: ${e}`));
   blocked.push(...baseProblems);
   if (!chain.ok) blocked.push(`evidence log tampered at entry ${chain.at}: ${chain.reason}`);
-  for (const w of weak) blocked.push(`contract weakened vs base (needs owner approval): ${w}`);
+  if (!approveWeakening()) for (const w of weak) blocked.push(`contract weakened vs base (needs owner approval): ${w}`);
   for (const r of results) {
     if (r.status === 'error') blocked.push(`${r.id}: could not run: ${r.detail}`);
     else if (r.status === 'blocked') blocked.push(`${r.id}: ${r.detail}`);
@@ -150,7 +161,7 @@ export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: e
   const pushed = pr ? pr.status === 'pass'
     : !!hi.head && !git(['status', '--porcelain'], root).out.split('\n').some((l) => l && !l.includes('.proofline/')) && git(['rev-parse', '--verify', '--quiet', `refs/remotes/${tgt.remote}/${tgt.branch}^{commit}`], root).out === hi.head;
   const reused = results.filter((r) => r.reused).map((r) => ({ id: r.id, type: r.type, ts: r.reused.ts, entry: r.reused.entry }));
-  return { pushed, task: t.id, title: t.title, phase: t.phase, decision, base, base_ref: baseRef, base_source: baseSource, ...hi, contract_hash: C.contractHash(c), results, reuse: !reuse.on ? 'off' : fresh ? 'fresh' : 'on', reused, forbidden, weakenings: weak, contract_change: contractChange, blocked, failing, measured: ctx.measured, claims: claimResults, changed: [...ctx.changed.keys()], ts: new Date().toISOString() };
+  return { pushed, task: t.id, title: t.title, phase: t.phase, decision, base, base_ref: baseRef, base_source: baseSource, ...hi, contract_hash: C.contractHash(c), results, reuse: !reuse.on ? 'off' : fresh ? 'fresh' : 'on', reused, forbidden, weakenings: weak, contract_change: contractChange, marker, blocked, failing, measured: ctx.measured, claims: claimResults, changed: [...ctx.changed.keys()], ts: new Date().toISOString() };
 }
 
 /** Corrective prompt tied to each failed criterion. */
@@ -217,7 +228,7 @@ function reportMd(v, c, prompt) {
     '## Reused results', '', ...(v.reused.length ? v.reused.map((x) => `- ${x.id} [${x.type}]: ${reusedFrom(x)}; not run again in this gate`) : [`- none${{ off: ' (defaults.reuse_results is off)', fresh: ' (--fresh)' }[v.reuse] || ''}`]), '',
     '## Measured', '', ...(Object.keys(v.measured).length ? Object.entries(v.measured).map(([k, x]) => `- ${k}: ${x}`) : ['- none']), '',
     '## Forbidden actions', '', ...(v.forbidden.length ? v.forbidden.map((f) => `- ${f.rule} in ${f.file}: \`${f.line}\` (${f.why})`) : ['- none detected']),
-    `- proofline.json is not scanned (it declares the deny-list); vs base it is ${v.contract_change}${v.contract_change === 'added' || v.contract_change === 'changed' ? `, judged by the weakening check: ${v.weakenings.length} weakening(s)` : ''}`, '',
+    `- proofline.json is not scanned (it declares the deny-list); vs base it is ${v.contract_change}${v.contract_change === 'approved' ? `, approved, marker ${v.marker}: ${v.weakenings.join('; ')}` : v.contract_change === 'added' || v.contract_change === 'changed' ? `, judged by the weakening check: ${v.weakenings.length} weakening(s)` : ''}`, '',
     '## Blockers', '', ...(v.blocked.length ? v.blocked.map((b) => `- ${b}`) : ['- none']), '',
     '## Claims vs evidence', '', ...(v.claims.length ? v.claims.map((x) => `- ${x.ok ? 'OK' : 'REJECTED'}: \`${x.claim}\`${x.ok ? '' : '\n  - ' + x.issues.join('\n  - ')}`) : ['- no claim submitted']), '',
     `## Scope (${v.changed.length} changed files)`, '', ...v.changed.slice(0, 50).map((f) => `- ${f}`), '',
@@ -297,7 +308,7 @@ export function brief(c, t, st = {}) {
       test_red_green: () => `write \`${x.test_file}\`${x.test_name ? ` ("${x.test_name}")` : ''} FIRST; Proofline replays it on the base revision where it must FAIL, then on your tree where it must PASS (\`${x.cmd}\`)`,
       test_exists: () => `\`${x.test_file}\` exists${x.test_name ? ` with "${x.test_name}"` : ''}`,
       metric: () => `\`${x.cmd}\` → \`${x.key}\` ${x.op} ${x.value}${c.baseline?.metrics?.[x.name || x.key] !== undefined ? ` (baseline ${c.baseline.metrics[x.name || x.key]})` : ''}`,
-      grep: () => `${x.file} ${x.must === 'absent' ? 'must not contain' : 'must contain'} /${x.pattern}/${x.why ? ` — ${x.why}` : ''}`,
+      grep: () => `${x.file} ${x.must === 'absent' ? 'must not contain' : 'must contain'} /${x.pattern}/${x.why ? `: ${x.why}` : ''}`,
       wiring: () => `\`${x.symbol}\` must be called on the default path from ${x.entry}`,
       scope: () => `only change: ${(x.allow || t.scope.allow).join(', ')}`,
       docs: () => `\`${x.cmd}\` leaves no diff in ${x.paths.join(', ')}`,
