@@ -21,6 +21,46 @@ flowchart LR
     O["owner marker<br/>sha256 of the approved<br/>proofline.json"] -. "approves a<br/>contract change" .-> H1
 ```
 
+## See it catch
+
+`node examples/demo/catch.mjs` builds a throwaway repository with one task, then plays five ways an agent "finishes" without doing the work, and the real work last. Real output, shortened only where a line ran long:
+
+```text
+proofline next -> TASK-1: Saves return a durable receipt on the default path
+
+1. The lie: no work, reported "done | abc1234 | app.test.mjs"   -> FAIL
+  claim rejected: claimed "done" but the independent gate says FAIL: ...
+  claim rejected: commit abc1234 does not exist
+  TASK-1-AC01 FAIL  test file test/durable.test.mjs not found
+  TASK-1-AC02 FAIL  durableReceipt is not referenced from the default path (src/app.mjs; 2 files reachable). Built but not wired in.
+
+2. The gap: a "durable" test that asserts what already held   -> FAIL
+  TASK-1-AC01 FAIL  test PASSES on base 412bc3d9 without the change: it does not prove the change (tests how, not what?)
+
+3. The shortcut: test.skip and a timeout raised 2000 -> 20000   -> FAIL
+  forbidden: test_skip_only in test/app.test.mjs: test.skip('handle returns ok', { timeout: 20000 }, () => { assert.equal(handle('x').ok, true); });
+  forbidden: timeout_raise in test/app.test.mjs: 2000 → 20000
+  TASK-1-AC03 FAIL  1 skipped/todo > allowed 0
+
+4. The stray change: README.md edited, outside the task's scope   -> FAIL
+  TASK-1-AC04 FAIL  changes outside the approved scope: README.md
+
+5. The weakening: proofline.json edited so "suite green" runs `true`, then git commit   -> REFUSED by the pre-commit hook
+  contract weakened: TASK-1/TASK-1-AC03 command changed: "node --test" → "true"
+  marker (no approvals directory configured)
+
+6. The work: failing test first, durableReceipt wired in, committed through the hooks, pushed   -> PASS
+  TASK-1-AC01 PASS  red on base (exit 1), green now
+  TASK-1-AC02 PASS  durableReceipt used on the default path: src/app.mjs
+  TASK-1-AC03 PASS  exit 0 in 234 ms
+  TASK-1-AC04 PASS  2 changed files, all in scope
+  TASK-1-AC05 PASS  HEAD f6234c72 is origin/main
+  claim accepted: "TASK-1 | done | f6234c7 | save is durable, test/durable.test.mjs | - | -"
+  evidence: 9 entries in the hash-chained log; report .proofline/reports/TASK-1-latest.md
+
+Caught five, passed one.
+```
+
 ## Sixty seconds
 
 In the repository the agent works on:
@@ -172,7 +212,7 @@ proofline/
 ├── src/engine.mjs           verify, the corrective prompt, gate and its report, next and brief, phases
 ├── src/mcp.mjs              the MCP server on stdio
 ├── src/index.mjs            the API, init, hooks
-├── examples/demo/           the FAIL to PASS demo (npm run demo)
+├── examples/demo/           demo.mjs (FAIL then PASS, npm run demo) and catch.mjs (five catches, one pass)
 ├── examples/demo-contract/  an example contract with one task; the self-gate validates it
 ├── docs/                    the source design: scope, requirements, architecture, lifecycle, evidence, roadmap
 ├── plans/                   definition of done, risk register, pilot plan

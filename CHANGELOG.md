@@ -4,6 +4,9 @@ All notable project changes are recorded here. Dates use ISO 8601 (`YYYY-MM-DD`)
 
 ## [Unreleased]
 
+### Added
+- `examples/demo/catch.mjs`: a short demo that catches a false report, a test that proves nothing, a skipped test with a raised timeout, a change outside the scope and a weakened contract, then passes the real work; its transcript is in the README.
+
 ### Fixed
 - `contract create` keeps one level of `scope.allow` when the task file writes the scope as the contract does, `{ "allow": [...] }`, and `contract validate` refuses a scope that is not a list of patterns, so `next` cannot crash on it (#19).
 - A failed `command` criterion's evidence names the failed tests. `out_tail` keeps the last 1,200 characters, where node's summary of repeated failures with their stacks held the last two or three names. The new `failing` field lists the failed test names found anywhere in the output (TAP `not ok` lines, the spec reporter's `✖ <name> (<ms>ms)` lines and the `failing tests:` section), without todos, skips or repeats, in order of first appearance and at most 100, with `failing_total` when there were more. The FAIL detail names the first 10, a flaky result keeps both runs' lists, and the gate report lists the names under Failing tests (#13).
