@@ -1,9 +1,8 @@
 // Minimal MCP server (JSON-RPC 2.0 over newline-delimited stdio). Zero dependencies.
 import readline from 'node:readline';
 import * as P from './index.mjs';
-import { receiptZeroConfig } from './infer.mjs';
 import { verifyReceipt } from './verify-receipt.mjs';
-import { attachMemory, probeDigest, receiptNote, writeReceiptNote } from './vault.mjs';
+import { buildReceipt } from './receipt.mjs';
 
 const BASE = { type: 'string', description: 'The revision the task started from. Needed in a fresh clone unless task_next pinned it or HEAD carries a Proofline-Base: trailer.' };
 const FRESH = { type: 'boolean', description: 'Run every check again, ignoring results reused under defaults.reuse_results.' };
@@ -20,19 +19,7 @@ const TOOLS = [
   { name: 'verify_receipt', description: 'Check a DSSE receipt envelope offline. Returns the same JSON verify-receipt prints with --json.', inputSchema: { type: 'object', properties: { path: { type: 'string' }, recompute: { type: 'boolean' }, base: BASE }, required: ['path'] } },
 ];
 
-async function runReceipt(root, a) {
-  const receipt = receiptZeroConfig(root, { base: a.base });
-  if (a.vault !== true) return receipt;
-  const digest = await probeDigest();
-  const attached = attachMemory(receipt, digest);
-  const note = receiptNote({
-    receipt: attached.receipt,
-    role: typeof a.role === 'string' && a.role ? a.role : 'agent',
-    subject: typeof a.task === 'string' ? a.task : '',
-  });
-  await writeReceiptNote(note, { vault: true });
-  return attached.receipt;
-}
+
 
 export function handle(root, msg) {
   const { id, method, params = {} } = msg;
@@ -53,7 +40,7 @@ export function handle(root, msg) {
         case 'report': r = P.report(root, a.task); break;
         case 'status': r = P.status(root, { owner: a.owner }); break;
         case 'receipt':
-          return runReceipt(root, a).then((got) => ok({ content: [{ type: 'text', text: JSON.stringify(got, null, 2) }], isError: false })).catch((e) => ok({ content: [{ type: 'text', text: `error: ${e.message}` }], isError: true }));
+          return buildReceipt(root, a).then((got) => ok({ content: [{ type: 'text', text: JSON.stringify(got, null, 2) }], isError: false })).catch((e) => ok({ content: [{ type: 'text', text: `error: ${e.message}` }], isError: true }));
         case 'verify_receipt':
           return verifyReceipt(a.path, { root, recompute: a.recompute === true, base: a.base }).then((got) => ok({ content: [{ type: 'text', text: JSON.stringify(got, null, 2) }], isError: false })).catch((e) => ok({ content: [{ type: 'text', text: `error: ${e.message}` }], isError: true }));
         default: return { jsonrpc: '2.0', id, error: { code: -32601, message: `unknown tool ${params.name}` } };

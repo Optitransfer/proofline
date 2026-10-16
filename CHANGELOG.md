@@ -18,6 +18,7 @@ All notable project changes are recorded here. Dates use ISO 8601 (`YYYY-MM-DD`)
 
 ### Added
 - `@optitransfer/proofline@0.2.0-next.0` is the public package on the `next` dist-tag. `private` is false, the test script runs `node --test test/*.test.mjs`, and `files` lists what this revision ships. The sixty-second start installs that package and calls `npx proofline`. The package description, keywords, homepage, repository, bugs and author match the GitHub repository page.
+- `proofline hook stop` writes one receipt for the commits a session made, and stays quiet when there is nothing new. `proofline connect claude-code` merges that hook into `~/.claude/settings.json` after the hooks already there.
 - MCP tools `receipt` and `verify_receipt` return the same JSON the CLI prints with `--json`. `tools/list` shows nine tools.
 - A hivevault digest can be attached to a receipt. L1 stores the digest and the frontier. L2 in ci mode stores only a commitment. No daemon leaves the receipt unchanged. `--vault` writes the note under `work/receipts/`.
 - `verify-receipt` checks a DSSE receipt offline. Exit 0 is verified, 1 is a bad signature, a schema problem or a `--recompute` difference, 2 is an unknown key, and 3 is usage. `--sigstore` is the only path that loads that verifier.

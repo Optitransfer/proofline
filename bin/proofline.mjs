@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import * as P from '../src/index.mjs';
 import { verifyChain, readLog } from '../src/evidence.mjs';
 import { verifyReceipt } from '../src/verify-receipt.mjs';
+import { buildReceipt } from '../src/receipt.mjs';
+import { connectClaudeCode, hookStop } from '../src/hook-stop.mjs';
 
 const argv = process.argv.slice(2);
 const flags = {}; const pos = [];
@@ -21,7 +23,7 @@ const owner = () => { if (flags.owner === true) throw new Error('--owner needs a
 const base = () => { if (flags.base === true) throw new Error('--base needs a revision'); return flags.base; };
 const claims = () => flags['claims-file'] ? fs.readFileSync(flags['claims-file'], 'utf8') : flags.claims === true ? fs.readFileSync(0, 'utf8') : flags.claims;
 
-const HELP = `proofline — independent V&V and delivery controller
+const HELP = `proofline: independent V&V and delivery controller
   init [--no-hooks] [--approvals <dir>] create proofline.json, .proofline/, install git hooks;
                                         --approvals sets the directory of owner markers (re-runnable)
   contract create --from spec.json      add a task contract (or --id --title [--phase] [--owner n] [--depends a,b] [--scope g1,g2])
@@ -41,7 +43,11 @@ const HELP = `proofline — independent V&V and delivery controller
   evidence record <type> --data '{..}' | evidence verify | evidence log
   verify-receipt <envelope> [--keys <dir>] [--sigstore] [--recompute --base <sha>]
                                         exit 0 verified, 1 failed or differs, 2 unknown key, 3 usage
+  receipt [--role <name>] [--base <rev>] [--vault]
+                                        one receipt for the revision; --vault writes the note when a daemon answers
   hook pre-commit|pre-push              (used by git hooks)
+  hook stop                             read a Stop hook payload on stdin; one receipt for new commits, or silence
+  connect claude-code                   merge a Stop hook into ~/.claude/settings.json, after any hook already there
   mcp                                   MCP server on stdio
 Global: --json  --root <dir>   Exit: 0 PASS, 1 FAIL, 2 BLOCKED, 3 usage`;
 
@@ -98,10 +104,38 @@ try {
       process.exitCode = r.exitCode;
       break;
     }
+    case 'receipt': {
+      const r = await buildReceipt(root, {
+        base: flags.base === true ? undefined : flags.base,
+        role: flags.role === true ? undefined : flags.role,
+        task: flags.task === true ? undefined : flags.task,
+        vault: flags.vault === true,
+      });
+      print(r);
+      break;
+    }
     case 'hook': {
+      if (sub === 'stop') {
+        let payload = {};
+        try {
+          const raw = fs.readFileSync(0, 'utf8');
+          if (raw.trim()) payload = JSON.parse(raw);
+        } catch { break; }
+        const where = flags.root ? root : (payload.cwd || root);
+        const out = await hookStop(where, payload);
+        if (out.receipts.length === 1) print(out.receipts[0]);
+        break;
+      }
       const r = sub === 'pre-commit' ? P.hookPreCommit(root) : sub === 'pre-push' ? P.hookPrePush(root) : null;
       if (!r) { process.exitCode = 3; break; }
       if (!r.ok) { console.error(`proofline ${sub}: REFUSED\n${r.msg}\n(There is no bypass. Fix the cause.)`); process.exitCode = 1; }
+      break;
+    }
+    case 'connect': {
+      if (sub !== 'claude-code') { console.error(HELP); process.exitCode = 3; break; }
+      const r = connectClaudeCode();
+      if (!r.ok) { console.error(`proofline connect: ${r.reason}`); process.exitCode = 1; break; }
+      print(r, `hook installed in ${r.file}`);
       break;
     }
     case 'mcp': await import('../src/mcp.mjs').then((m) => m.serve(root)); break;
