@@ -8,7 +8,11 @@
     "No silent scope cuts: never lower targets, caps or test sizes without owner approval.",
     "Never bypass guards: no --no-verify, no bypass env vars, no skip flags.",
     "Deliver continuously: one task per commit, pushed to main as it goes green.",
-    "Honest reporting: TASK-ID | status | commit | tests | measured vs target | missing."
+    "Honest reporting: TASK-ID | status | commit | tests | measured vs target | missing.",
+    "The verifier never controls its own trust boundary: contract, evidence and gate records change only through the owner deploy key.",
+    "Heuristic checks are one layer, never a boundary; say so in every receipt and page.",
+    "No reliability or enterprise claim without a gated task behind it (TB-08).",
+    "Honest reporting: TASK-ID | status | commit | tests | missing."
   ],
   "defaults": {
     "base": "origin/main",
@@ -1167,6 +1171,299 @@
       ],
       "stop_rules": [
         "If a diagram cannot land byte-identical because a label is wrong or a repository path differs: STOP and report; propose the change to the pinned SVG through the programme owner, never edit the SVG in place and never loosen the hash."
+      ]
+    },
+    {
+      "id": "TB-02",
+      "title": "Owner-signed contracts: every entry point refuses an unsigned or altered contract",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [],
+      "requirements": [
+        "TB-R02"
+      ],
+      "description": "External dependency: agentkey@next (AK-02). proofline.json gets a sibling proofline.json.sig: a DSSE envelope over sha256(canonical proofline.json) signed by the agentkey role \"owner\", whose private key exists only on the owner's machine; the owner public key is pinned in guard/owner.pub (a TB-01 protected path) and read from there, never from the contract. `proofline contract sign` (owner laptop) writes the signature; `proofline contract verify-sig` checks it; next, verify, gate, brief and both hooks exit 2 with \"contract not owner-signed\" when the hash has no valid signature. `proofline contract propose` writes proposals/<sha256>.diff and prints the hash; it is the only agent path. The weakening check stays as a warning. This replaces PL-00; the \"stages only proofline.json\" rule is removed.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md",
+          "package.json"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "TB-02-AC01",
+          "mandatory": true,
+          "statement": "unsigned, altered or wrongly-signed contract makes next, verify, gate, brief and the hooks exit 2; a signed one passes; the key is read from guard/owner.pub only",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/contract_sig.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "TB-02-AC02",
+          "mandatory": true,
+          "statement": "propose writes the diff and hash and changes nothing else",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/contract_propose.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "TB-02-AC03",
+          "mandatory": true,
+          "statement": "the staging-only bypass is gone",
+          "verifier": {
+            "type": "grep",
+            "file": "src/contract.mjs",
+            "pattern": "stages only|only proofline.json",
+            "must": "absent"
+          }
+        },
+        {
+          "id": "TB-02-AC04",
+          "mandatory": true,
+          "statement": "signature verification is on the default path of every entry point",
+          "verifier": {
+            "type": "wiring",
+            "symbol": "verifyContractSignature",
+            "entry": "bin/proofline.mjs"
+          }
+        },
+        {
+          "id": "TB-02-AC05",
+          "mandatory": true,
+          "statement": "documented",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/receipt.md",
+            "pattern": "contract not owner-signed",
+            "must": "present"
+          }
+        },
+        {
+          "id": "TB-02-AC06",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "TB-02-AC07",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
+        "If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item."
+      ]
+    },
+    {
+      "id": "TB-06",
+      "title": "Isolated execution and honest heuristics: checks run in a sandbox, heuristics labelled, evasions tested",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "TB-02"
+      ],
+      "requirements": [
+        "TB-R06"
+      ],
+      "description": "verify and gate gain --isolated (default on in CI, off locally until a runtime is found): every command, test_red_green and metric runs in a container (docker or podman, image pinned by digest in proofline.json `env.image`) or, when neither exists, in bubblewrap, with no network except an allowlist, a fresh HOME, and the repository mounted read-only except the paths the check declares. The receipt records env_digest (image digest, node version, tool versions) and `isolated: true|false`. grep, wiring and the forbidden scan are marked heuristic: true in the receipt and in docs/receipt.md as \"one layer, not a boundary\". fixtures/evasions/ holds ten known evasions (computed dynamic import, env-dependent test, benchmark code edited, timeout raised through config, test removed by rename, test weakened by snapshot update, suite command changed via a wrapper, network-dependent pass, pre-generated cache, a check that reads the contract) and test/evasions.test.mjs asserts each is either caught or reported in predicate.coverage_limits[] by name; none may pass silently.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "fixtures/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md",
+          "package.json"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "TB-06-AC01",
+          "mandatory": true,
+          "statement": "isolated mode runs the checks in a container or bwrap with no network and records env_digest; local mode records isolated:false",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/isolated.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "TB-06-AC02",
+          "mandatory": true,
+          "statement": "the ten evasions are each caught or named in coverage_limits; none passes silently",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/evasions.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "TB-06-AC03",
+          "mandatory": true,
+          "statement": "heuristic checks labelled in the receipt",
+          "verifier": {
+            "type": "grep",
+            "file": "schema/receipt-v1.json",
+            "pattern": "\"heuristic\"",
+            "must": "present"
+          }
+        },
+        {
+          "id": "TB-06-AC04",
+          "mandatory": true,
+          "statement": "documented as one layer, not a boundary",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/receipt.md",
+            "pattern": "one layer, not a (security )?boundary",
+            "must": "present"
+          }
+        },
+        {
+          "id": "TB-06-AC05",
+          "mandatory": true,
+          "statement": "ten evasion fixtures present",
+          "verifier": {
+            "type": "command",
+            "cmd": "n=$(ls -d fixtures/evasions/*/ 2>/dev/null | wc -l | tr -d \" \"); [ \"${n:-0}\" -ge 10 ]",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "TB-06-AC06",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "TB-06-AC07",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
+        "If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item."
+      ]
+    },
+    {
+      "id": "TB-07",
+      "title": "Release contract: package identity, provenance, reproducible build, compatibility policy",
+      "phase": "release",
+      "owner": "lane-c",
+      "depends_on": [
+        "TB-02"
+      ],
+      "requirements": [
+        "TB-R07"
+      ],
+      "description": "One package name decided and recorded (proofline or @optitransfer/proofline; the other is a deprecated alias pointing at it); package.json private:false, version 0.2.0 on release; publish with npm provenance from the release workflow once the Actions account is unlocked (the no-provenance next prerelease is recorded as temporary in docs/releases.md with the date it is superseded); reproducible build: two `npm pack` runs with SOURCE_DATE_EPOCH set yield the same sha256, asserted in CI and recorded; docs/COMPATIBILITY.md states semver for the CLI, the predicate URL versioning rule, the supported Node versions, the hivevault and agentkey version ranges, and the deprecation policy. agentkey ships 0.1.0 under the same rules (AK-06).",
+      "scope": {
+        "allow": [
+          "package.json",
+          ".github/**",
+          "docs/**",
+          "scripts/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "TB-07-AC01",
+          "mandatory": true,
+          "statement": "package name decided and the alias recorded",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/releases.md",
+            "pattern": "canonical package name",
+            "must": "present"
+          }
+        },
+        {
+          "id": "TB-07-AC02",
+          "mandatory": true,
+          "statement": "two packs are byte-identical",
+          "verifier": {
+            "type": "command",
+            "cmd": "d=$(mktemp -d) && export SOURCE_DATE_EPOCH=1700000000 && npm pack --silent --pack-destination=\"$d\" >/dev/null && a=$(ls \"$d\"/*.tgz) && [ -f \"$a\" ] && h1=$(shasum -a 256 \"$a\" | cut -d\" \" -f1) && rm -f \"$a\" && npm pack --silent --pack-destination=\"$d\" >/dev/null && b=$(ls \"$d\"/*.tgz) && [ -f \"$b\" ] && h2=$(shasum -a 256 \"$b\" | cut -d\" \" -f1) && rm -rf \"$d\" && [ -n \"$h1\" ] && [ \"$h1\" = \"$h2\" ]",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "TB-07-AC03",
+          "mandatory": true,
+          "statement": "compatibility policy present with the predicate versioning rule",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/COMPATIBILITY.md",
+            "pattern": "predicate",
+            "must": "present"
+          }
+        },
+        {
+          "id": "TB-07-AC04",
+          "mandatory": true,
+          "statement": "release workflow publishes with provenance",
+          "verifier": {
+            "type": "grep",
+            "file": ".github/workflows/release.yml",
+            "pattern": "npm publish .*--provenance",
+            "must": "present"
+          }
+        },
+        {
+          "id": "TB-07-AC05",
+          "mandatory": true,
+          "statement": "provenance publish recorded (or its blocker with a date)",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/releases.md",
+            "pattern": "provenance",
+            "must": "present"
+          }
+        },
+        {
+          "id": "TB-07-AC06",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
+        "If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item."
       ]
     }
   ],
