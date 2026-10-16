@@ -7,6 +7,7 @@ import { verifyChain, readLog } from '../src/evidence.mjs';
 import { verifyReceipt } from '../src/verify-receipt.mjs';
 import { buildReceipt } from '../src/receipt.mjs';
 import { connectClaudeCode, hookStop } from '../src/hook-stop.mjs';
+import * as G from '../src/guided.mjs';
 
 const argv = process.argv.slice(2);
 const flags = {}; const pos = [];
@@ -25,6 +26,10 @@ const base = () => { if (flags.base === true) throw new Error('--base needs a re
 const claims = () => flags['claims-file'] ? fs.readFileSync(flags['claims-file'], 'utf8') : flags.claims === true ? fs.readFileSync(0, 'utf8') : flags.claims;
 
 const HELP = `proofline: independent V&V and delivery controller
+  setup [--agent claude-code|none]      init, hooks, the owner key, approvals at .proofline/approvals
+  task "<plain words>"                  write a proposal from those words and print its hash
+  contract approve [<hash>]             show the diff; on y write the marker and apply the bytes
+  watch [TASK]                          print the active task until the gate is PASS
   init [--no-hooks] [--approvals <dir>] create proofline.json, .proofline/, install git hooks;
                                         --approvals sets the directory of owner markers (re-runnable)
   contract create --from spec.json      add a task contract (or --id --title [--phase] [--owner n] [--depends a,b] [--scope g1,g2])
@@ -61,6 +66,16 @@ Global: --json  --root <dir>   Exit: 0 PASS, 1 FAIL, 2 BLOCKED, 3 usage`;
 try {
   const [cmd, sub] = pos;
   switch (cmd) {
+    case 'setup': {
+      const agent = flags.agent === undefined ? 'none' : flags.agent;
+      if (agent === true) throw new Error('unknown agent\nNext step: proofline setup --agent none');
+      process.stdout.write(G.setup(root, { agent: String(agent) }));
+      break;
+    }
+    case 'task': {
+      process.stdout.write(G.task(root, pos.slice(1).join(' ')));
+      break;
+    }
     case 'init': {
       if (flags.approvals === true) throw new Error('--approvals needs a directory');
       const r = P.init(root, { hooks: !flags['no-hooks'], approvals: flags.approvals });
@@ -100,6 +115,9 @@ try {
         const id = typeof flags.id === 'string' ? flags.id : 'TASK';
         const task = P.C.scaffoldTask({ title: flags.title, scope: flags.scope, kind, id });
         print(task, JSON.stringify(task, null, 2));
+      }
+      else if (sub === 'approve') {
+        process.stdout.write(G.approve(root, pos[2]));
       }
       else if (sub === 'show') print(P.C.load(root));
       else { console.error(HELP); process.exitCode = 3; }
@@ -172,6 +190,10 @@ try {
       if (!r) { process.exitCode = 3; break; }
       if (!r.ok) { console.error(`proofline ${sub}: REFUSED\n${r.msg}\n(There is no bypass. Fix the cause.)`); process.exitCode = 1; }
       else if (r.msg) console.error(r.msg);
+      break;
+    }
+    case 'watch': {
+      process.exitCode = G.watch(root, sub);
       break;
     }
     case 'connect': {

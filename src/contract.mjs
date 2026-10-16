@@ -306,6 +306,17 @@ function ownerTable(spec) {
   return map;
 }
 
+/** The contract text with tasks appended. A duplicate id throws and the caller writes nothing. Existing bytes stay. */
+export function appendTaskText(text, tasks) {
+  const current = JSON.parse(text);
+  const have = new Set((current.tasks || []).map((t) => t.id));
+  for (const t of tasks) {
+    if (!t.id || have.has(t.id)) throw new Error(`duplicate task id ${t.id || '(missing)'}`);
+    have.add(t.id);
+  }
+  return insertValues(text, 'tasks', tasks);
+}
+
 /**
  * Append a fragment's tasks and new owner rules. A duplicate id is refused and the file is left untouched.
  * Existing bytes stay. The return is the sha256 of the file after the append.
@@ -319,14 +330,9 @@ export function mergeContract(root, fragmentPath, { owners } = {}) {
   const file = contractPath(root);
   const before = fs.readFileSync(file, 'utf8');
   const current = JSON.parse(before);
-  const have = new Set((current.tasks || []).map((t) => t.id));
-  for (const t of tasks) {
-    if (!t.id || have.has(t.id)) throw new Error(`duplicate task id ${t.id || '(missing)'}`);
-    have.add(t.id);
-  }
   const haveRules = new Set(current.owner_rules || []);
   const freshRules = rules.filter((r) => !haveRules.has(r));
-  let next = insertValues(before, 'tasks', tasks);
+  let next = appendTaskText(before, tasks);
   if (freshRules.length) {
     if (arrayEnd(next, 'owner_rules') == null) throw new Error('no owner_rules array');
     next = insertValues(next, 'owner_rules', freshRules);
