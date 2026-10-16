@@ -1016,6 +1016,158 @@
         "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
         "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
       ]
+    },
+    {
+      "id": "DG-PL",
+      "title": "Diagram lands in proofline once 0.2.0 is published",
+      "phase": "integrate",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-08"
+      ],
+      "requirements": [
+        "DG-R02"
+      ],
+      "description": "Copy docs/diagrams/proofline-receipt-flow.svg byte for byte from the programme repository; README.md embeds it under \"What a receipt is\"; docs/receipt.md embeds it above the predicate; docs/diagrams/README.md states the licence and the source of truth. The neighbours (agentkey, hivevault, proofline-action) appear as grey boxes only and link to their repositories in the README text.",
+      "scope": {
+        "allow": [
+          "docs/diagrams/**",
+          "docs/receipt.md",
+          "README.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "DG-PL-AC01",
+          "mandatory": true,
+          "statement": "proofline-receipt-flow.svg present",
+          "verifier": {
+            "type": "file_exists",
+            "path": "docs/diagrams/proofline-receipt-flow.svg"
+          }
+        },
+        {
+          "id": "DG-PL-AC02",
+          "mandatory": true,
+          "statement": "proofline-receipt-flow.svg is byte-identical to the pinned diagram",
+          "verifier": {
+            "type": "command",
+            "cmd": "node -e \"process.exit(require('crypto').createHash('sha256').update(require('fs').readFileSync('docs/diagrams/proofline-receipt-flow.svg')).digest('hex')==='6a52a8d2726fecb11e20aebf08995a54c1d1003db22ee9809197f82198c5dc7a'?0:1)\"",
+            "expect_exit": 0,
+            "timeout_s": 300
+          }
+        },
+        {
+          "id": "DG-PL-AC03",
+          "mandatory": true,
+          "statement": "proofline-receipt-flow.svg is well-formed SVG",
+          "verifier": {
+            "type": "command",
+            "cmd": "python3 -I -c \"import xml.etree.ElementTree as E; E.parse('docs/diagrams/proofline-receipt-flow.svg')\"",
+            "expect_exit": 0,
+            "timeout_s": 300
+          }
+        },
+        {
+          "id": "DG-PL-AC04",
+          "mandatory": true,
+          "statement": "README embeds it",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "docs/diagrams/proofline-receipt-flow\\.svg",
+            "must": "present"
+          }
+        },
+        {
+          "id": "DG-PL-AC05",
+          "mandatory": true,
+          "statement": "docs/receipt.md embeds it",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/receipt.md",
+            "pattern": "diagrams/proofline-receipt-flow\\.svg",
+            "must": "present"
+          }
+        },
+        {
+          "id": "DG-PL-AC06",
+          "mandatory": true,
+          "statement": "neighbour links present",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "github\\.com/mgillr/agentkey",
+            "must": "present"
+          }
+        },
+        {
+          "id": "DG-PL-AC07",
+          "mandatory": true,
+          "statement": "diagram README states the licence",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/diagrams/README.md",
+            "pattern": "CC-BY-4\\.0",
+            "must": "present"
+          }
+        },
+        {
+          "id": "DG-PL-AC08",
+          "mandatory": true,
+          "statement": "shared vocabulary present (agentkey)",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/diagrams/proofline-receipt-flow.svg",
+            "pattern": "agentkey",
+            "must": "present"
+          }
+        },
+        {
+          "id": "DG-PL-AC09",
+          "mandatory": true,
+          "statement": "shared vocabulary present (proofline)",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/diagrams/proofline-receipt-flow.svg",
+            "pattern": "proofline",
+            "must": "present"
+          }
+        },
+        {
+          "id": "DG-PL-AC10",
+          "mandatory": true,
+          "statement": "shared vocabulary present (hivevault)",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/diagrams/proofline-receipt-flow.svg",
+            "pattern": "hivevault",
+            "must": "present"
+          }
+        },
+        {
+          "id": "DG-PL-AC11",
+          "mandatory": true,
+          "statement": "shared vocabulary present (L2)",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/diagrams/proofline-receipt-flow.svg",
+            "pattern": "L2",
+            "must": "present"
+          }
+        },
+        {
+          "id": "DG-PL-AC12",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a diagram cannot land byte-identical because a label is wrong or a repository path differs: STOP and report; propose the change to the pinned SVG through the programme owner, never edit the SVG in place and never loosen the hash."
+      ]
     }
   ],
   "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. PL-SELF stays: proofline verifies itself with its own contract.",
