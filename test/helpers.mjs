@@ -15,8 +15,11 @@ export function repo({ hooks = false, files = {} } = {}) {
   sh(tmp, 'clone', '-q', origin, r);
   sh(r, 'config', 'user.email', 't@t'); sh(r, 'config', 'user.name', 't'); sh(r, 'checkout', '-q', '-b', 'main');
   write(r, { 'package.json': '{ "type": "module" }\n', ...files });
-  P.init(r, { hooks, project: 't' });
+  // The seed commit is the repository, not a task. Hooks go on after it is on origin,
+  // so the first push is not refused for naming no task.
+  P.init(r, { hooks: false, project: 't' });
   sh(r, 'add', '-A'); sh(r, 'commit', '-q', '--no-verify', '-m', 'init'); sh(r, 'push', '-q', 'origin', 'main');
+  if (hooks) P.installHooks(r);
   return r;
 }
 export function write(r, files) { for (const [f, s] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(r, f)), { recursive: true }); fs.writeFileSync(path.join(r, f), s); } }

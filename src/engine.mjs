@@ -277,26 +277,29 @@ export function phaseStatus(root, c = C.load(root)) {
  * The next task. With `owner`, only that owner's tasks and unowned ones are handed out, and the phase gate
  * applies to that lane; depends_on still waits on any owner's task.
  */
-export function next(root, { owner } = {}) {
+export function next(root, { owner, skip = [] } = {}) {
   const c = C.load(root);
   C.checkOwner(c, owner);
   const st = taskStatus(root, c);
+  const skipSet = new Set(skip);
+  // A skipped task has landed. It does not stay active, and it does not keep its phase or its dependents waiting.
+  const open = (t) => st[t.id].status !== 'verified' && !skipSet.has(t.id);
   const lane = c.tasks.filter((t) => C.inLane(t, owner));
   const order = (C.topo(c.tasks) || c.tasks).filter((t) => C.inLane(t, owner));
-  const firstOpenPhase = C.PHASES.find((p) => lane.some((t) => t.phase === p && st[t.id].status !== 'verified'));
+  const firstOpenPhase = C.PHASES.find((p) => lane.some((t) => t.phase === p && open(t)));
   if (!firstOpenPhase && owner) {
-    const others = c.tasks.filter((t) => !C.inLane(t, owner) && st[t.id].status !== 'verified').map((t) => `${t.id} (${t.owner})`);
+    const others = c.tasks.filter((t) => !C.inLane(t, owner) && st[t.id].status !== 'verified' && !skipSet.has(t.id)).map((t) => `${t.id} (${t.owner})`);
     return { done: true, owner, message: `Every task for ${owner} and every unowned task is verified.${others.length ? ` Open for other owners: ${others.join(', ')}.` : ' Run `proofline gate --all` before release.'}` };
   }
   if (!firstOpenPhase) return { done: true, message: 'All tasks verified. Run `proofline gate --all` before release.' };
   for (const t of order) {
-    if (st[t.id].status === 'verified') continue;
+    if (!open(t)) continue;
     if (t.phase !== firstOpenPhase) continue; // phase gate: earlier phases must be fully verified
-    const deps = (t.depends_on || []).filter((d) => st[d]?.status !== 'verified');
+    const deps = (t.depends_on || []).filter((d) => st[d]?.status !== 'verified' && !skipSet.has(d));
     if (deps.length) continue;
     return { done: false, task: t.id, phase: t.phase, status: st[t.id].status, brief: brief(c, t, st) };
   }
-  const waiting = order.filter((t) => st[t.id].status !== 'verified').map((t) => `${t.id} (waits on ${(t.depends_on || []).filter((d) => st[d]?.status !== 'verified').join(', ') || 'phase gate'})`);
+  const waiting = order.filter((t) => open(t)).map((t) => `${t.id} (waits on ${(t.depends_on || []).filter((d) => st[d]?.status !== 'verified' && !skipSet.has(d)).join(', ') || 'phase gate'})`);
   return { done: false, task: null, message: `No task${owner ? ` for ${owner}` : ''} is unblocked in phase ${firstOpenPhase}: ${waiting.join('; ')}` };
 }
 

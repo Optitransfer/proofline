@@ -75,13 +75,20 @@ try {
     case 'next': { const n = P.taskNext(root, { owner: owner() }); print(n, n.brief || n.message); break; }
     case 'brief': { const b = P.taskBrief(root, sub, { owner: owner(), base: base() }); print({ brief: b }, b); break; }
     case 'verify': case 'gate': {
+      const requested = sub;
+      const settled = P.settleLanded(root);
+      if (settled && !flags.all && !flags.ci && (!requested || requested === settled.task)) {
+        print({ landed: true, task: settled.task }, settled.message);
+        break;
+      }
       const c = P.C.load(root);
-      const ids = flags.all ? c.tasks.map((t) => t.id) : flags.ci ? (c.ci?.tasks || []) : [sub || P.activeTask(root)].filter(Boolean);
+      const ids = flags.all ? c.tasks.map((t) => t.id) : flags.ci ? (c.ci?.tasks || []) : [requested || P.activeTask(root)].filter(Boolean);
       if (!ids.length) { if (flags.ci) { const e = P.C.validate(c); print({ decision: e.length ? 'FAIL' : 'PASS', problems: e }, e.length ? e.join('\n') : 'contract valid; no ci.tasks'); process.exitCode = e.length ? 1 : 0; break; } throw new Error('which task? (proofline next)'); }
       const outs = ids.map((id) => P.E.gate(root, id, { claims: claims(), base: base(), fresh: flags.fresh === true, skipTypes: flags['skip-pushed'] || flags.ci ? ['pushed'] : [] }));
       const worst = outs.some((o) => o.decision === 'BLOCKED') ? 'BLOCKED' : outs.some((o) => o.decision === 'FAIL') ? 'FAIL' : 'PASS';
+      const note = settled ? `${settled.message}\n\n` : '';
       print(outs.length === 1 ? outs[0] : { decision: worst, gates: outs.map((o) => ({ task: o.task, decision: o.decision, failing: o.failing, blocked: o.blocked })) },
-        outs.map((o) => `== ${o.task}: ${o.decision}\n  base: ${o.base_ref} = ${o.base?.slice(0, 8) || 'not found'} (${o.base_source})\n${o.results.map((r) => `  ${r.status.toUpperCase().padEnd(5)} ${r.id} [${r.type}] ${r.detail.split('\n')[0]}`).join('\n')}${o.forbidden.length ? '\n  forbidden: ' + o.forbidden.map((f) => `${f.rule}@${f.file}`).join(', ') : ''}\n  report: ${o.report}\n\n${o.corrective_prompt}`).join('\n\n') + `\n\nDECISION: ${worst}`);
+        note + outs.map((o) => `== ${o.task}: ${o.decision}\n  base: ${o.base_ref} = ${o.base?.slice(0, 8) || 'not found'} (${o.base_source})\n${o.results.map((r) => `  ${r.status.toUpperCase().padEnd(5)} ${r.id} [${r.type}] ${r.detail.split('\n')[0]}`).join('\n')}${o.forbidden.length ? '\n  forbidden: ' + o.forbidden.map((f) => `${f.rule}@${f.file}`).join(', ') : ''}\n  report: ${o.report}\n\n${o.corrective_prompt}`).join('\n\n') + `\n\nDECISION: ${worst}`);
       process.exitCode = code(worst);
       break;
     }
@@ -126,9 +133,12 @@ try {
         if (out.receipts.length === 1) print(out.receipts[0]);
         break;
       }
-      const r = sub === 'pre-commit' ? P.hookPreCommit(root) : sub === 'pre-push' ? P.hookPrePush(root) : null;
+      let lines;
+      if (sub === 'pre-push' && !process.stdin.isTTY) lines = fs.readFileSync(0, 'utf8').split('\n').filter((l) => l.trim());
+      const r = sub === 'pre-commit' ? P.hookPreCommit(root) : sub === 'pre-push' ? P.hookPrePush(root, { lines }) : null;
       if (!r) { process.exitCode = 3; break; }
       if (!r.ok) { console.error(`proofline ${sub}: REFUSED\n${r.msg}\n(There is no bypass. Fix the cause.)`); process.exitCode = 1; }
+      else if (r.msg) console.error(r.msg);
       break;
     }
     case 'connect': {
