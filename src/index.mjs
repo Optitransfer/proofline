@@ -213,7 +213,9 @@ function commitsOnPushLine(root, line) {
   const local = p[1];
   const remote = p[3];
   if (!/^[0-9a-f]{40}$/i.test(local) || /^0+$/.test(local)) return [];
-  const spec = /^0+$/.test(remote) ? [local, '--not', '--remotes'] : [`${remote}..${local}`];
+  // An existing branch uses remote..local, and both forms drop commits already on a remote.
+  // A rebase otherwise counts commits that reached main after the branch was first sent.
+  const spec = /^0+$/.test(remote) ? [local, '--not', '--remotes'] : [`${remote}..${local}`, '--not', '--remotes'];
   const r = git(['rev-list', ...spec], root);
   if (!r.ok || !r.out) return [];
   return r.out.split('\n').filter(Boolean);
