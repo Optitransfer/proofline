@@ -1,5 +1,6 @@
 // Public API used by the CLI and the MCP server.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import * as C from './contract.mjs';
 import * as E from './engine.mjs';
@@ -97,17 +98,23 @@ export function contractCreate(root, spec) {
   return { task: t, valid: errs.length === 0, problems: errs };
 }
 
-export function taskNext(root, { owner } = {}) {
+export function taskNext(root, { owner, base: explicitBase } = {}) {
   const settled = settleLanded(root);
   let c;
   try { c = C.load(root); } catch { c = { tasks: [] }; }
   const n = E.next(root, { owner, skip: c.tasks.map((t) => t.id).filter((id) => landedWhy(root, id)) });
-  if (n.task && n.status === 'not_started') { const loaded = C.load(root);
-    const base = resolveBase(root, C.defaultBase(loaded)) || git(['rev-parse', 'HEAD'], root).out;
-    record(root, 'task_started', { task: n.task, base, ...(owner ? { owner } : {}) }); n.status = 'in_progress'; }
+  if (n.task && (n.status === 'not_started' || explicitBase)) {
+    const loaded = C.load(root);
+    let base;
+    if (explicitBase) {
+      base = resolveBase(root, explicitBase);
+      if (!base) throw new Error(`base revision "${explicitBase}" not found`);
+    } else base = resolveBase(root, C.defaultBase(loaded)) || git(['rev-parse', 'HEAD'], root).out;
+    record(root, 'task_started', { task: n.task, base, ...(owner ? { owner } : {}) }); n.status = 'in_progress';
+  }
   if (n.task) {
     fs.writeFileSync(path.join(root, '.proofline', 'active'), n.task + '\n');
-    n.base = readLog(root).find((e) => e.type === 'task_started' && e.data.task === n.task)?.data.base;
+    n.base = E.latestStart(root, n.task);
     if (n.base) n.brief += `\n\n## Base\nPinned at start: ${n.base}. The pin lives in the local .proofline/ log; in another clone, gate with \`--base ${n.base}\`, or end the task commit message with the trailer \`Proofline-Base: ${n.base}\`.`;
   }
   if (settled) {
@@ -288,13 +295,67 @@ export function hookPreCommit(root) {
   return { ok: problems.length === 0, msg: problems.join('\n') };
 }
 
+const GIT_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_PREFIX', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY', 'GIT_NAMESPACE', 'GIT_QUARANTINE_PATH'];
+
+/** A pre-push hook exports GIT_DIR. Drop it so the gate sees the temporary worktree, then put it back. */
+function withoutGitEnv(fn) {
+  const saved = {};
+  for (const k of GIT_ENV) {
+    if (Object.prototype.hasOwnProperty.call(process.env, k)) { saved[k] = process.env[k]; delete process.env[k]; }
+  }
+  try { return fn(); }
+  finally {
+    for (const k of GIT_ENV) {
+      if (Object.prototype.hasOwnProperty.call(saved, k)) process.env[k] = saved[k];
+      else delete process.env[k];
+    }
+  }
+}
+
 /**
- * pre-push. A push is gated on the task its commits name ((TASK-ID) subject suffix or Proofline-Task trailer).
+ * Gate `id` at `sha` in a temporary worktree. The base is the most recent start pin in `root`,
+ * otherwise the parent of `sha`. The refusal names that base. Stale evidence in `root` is not copied.
+ */
+function gateAtCommit(root, sha, id) {
+  const pinned = E.latestStart(root, id);
+  const parent = git(['rev-parse', '--verify', '--quiet', `${sha}^`], root);
+  const baseRef = pinned || (parent.ok ? parent.out : null);
+  const named = baseRef || 'none';
+  if (!baseRef) return { ok: false, msg: `${id} at ${sha}: no base\nbase ${named}` };
+  return withoutGitEnv(() => {
+    const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'proofline-push-'));
+    let added = false;
+    try {
+      const add = git(['worktree', 'add', '--detach', '--force', wt, sha], root);
+      if (!add.ok) return { ok: false, msg: `${id} at ${sha}: worktree failed: ${add.err}\nbase ${baseRef}` };
+      added = true;
+      let g;
+      try { g = E.gate(wt, id, { skipTypes: ['pushed'], base: baseRef }); }
+      catch (e) { return { ok: false, msg: `${id} at ${sha}: ${e.message}\nbase ${baseRef}` }; }
+      const used = g.base || baseRef;
+      if (g.decision !== 'PASS') return { ok: false, msg: `${id} at ${sha}: ${g.decision}\nbase ${used}\n${g.corrective_prompt}` };
+      return { ok: true, msg: `gated ${id} at ${sha}\nbase ${used}` };
+    } finally {
+      if (added) git(['worktree', 'remove', '--force', wt], root);
+      fs.rmSync(wt, { recursive: true, force: true });
+    }
+  });
+}
+
+/**
+ * pre-push. A push is gated on the commit being pushed: the local sha from stdin, at that sha,
+ * not the checked-out HEAD. The task is the (TASK-ID) subject suffix or a Proofline-Task trailer.
  * A commit that names none falls back to the active task. No active task and no named task is a refusal
  * that prints `proofline next`. An active task that has landed is cleared and never gated.
  * With no push lines (a direct call), the previous rule stands: the active task, else every in-progress or failed task.
  */
 export function hookPrePush(root, { lines } = {}) {
+  // stdin lines are `<local ref> <local sha> <remote ref> <remote sha>`. The gated revision is that sha.
+  if (lines == null) {
+    let raw = '';
+    try { if (!process.stdin.isTTY) raw = fs.readFileSync(0, 'utf8'); } catch { raw = ''; }
+    lines = raw.split('\n').filter((l) => l.trim());
+  }
   const settled = settleLanded(root);
   const c = C.load(root);
   const errs = C.validate(c);
@@ -302,40 +363,39 @@ export function hookPrePush(root, { lines } = {}) {
   const join = (...parts) => parts.flat().filter(Boolean).join('\n\n');
   if (errs.length) return { ok: false, msg: join(note, 'contract invalid:\n' + errs.join('\n')) };
   const haveLines = Array.isArray(lines) && lines.some((l) => l.trim());
-  let ids = null;
-  let refuse = '';
   if (haveLines) {
     const known = new Set(c.tasks.map((t) => t.id));
     const commits = [...new Set(lines.flatMap((l) => commitsOnPushLine(root, l)))];
     if (commits.length) {
-      const named = [];
-      let unnamed = false;
+      const active = activeTask(root);
+      const activeLive = active && !landedWhy(root, active) ? active : null;
+      const jobs = [];
       for (const sha of commits) {
         const body = git(['log', '-1', '--format=%B', sha], root).out || '';
         const id = taskFromMessage(body, known);
-        if (id) named.push(id);
-        else unnamed = true;
+        if (id) jobs.push({ sha, id });
+        else if (activeLive) jobs.push({ sha, id: activeLive });
       }
-      const namedSet = new Set(named);
-      ids = [...namedSet];
-      const active = activeTask(root);
-      if (unnamed && active && !landedWhy(root, active)) ids.push(active);
-      if (!ids.length) {
+      if (!jobs.length) {
         const started = readLog(root).some((e) => e.type === 'task_started');
-        if (!started) {
-          return { ok: true, msg: join(note, 'No task has a start record. Next step: proofline next') };
-        }
-        refuse = 'no active task and no commit names a task.\nNext step: proofline next';
+        if (!started) return { ok: true, msg: join(note, 'No task has a start record. Next step: proofline next') };
+        return { ok: false, msg: join(note, 'no active task and no commit names a task.\nNext step: proofline next') };
       }
+      const bad = [];
+      const good = [];
+      for (const job of jobs) {
+        if (!c.tasks.some((t) => t.id === job.id)) continue;
+        const g = gateAtCommit(root, job.sha, job.id);
+        if (!g.ok) bad.push(g.msg);
+        else if (g.msg) good.push(g.msg);
+      }
+      return { ok: bad.length === 0, msg: join(note, bad.length ? bad.join('\n\n') : good.join('\n\n')) };
     }
   }
-  if (!ids) {
-    const st = E.taskStatus(root, c);
-    const active = activeTask(root);
-    ids = active ? [active] : Object.keys(st).filter((k) => st[k].status === 'in_progress' || st[k].status === 'failed');
-    ids = ids.filter((id) => !landedWhy(root, id));
-  }
-  if (refuse) return { ok: false, msg: join(note, refuse) };
+  const st = E.taskStatus(root, c);
+  const active = activeTask(root);
+  let ids = active ? [active] : Object.keys(st).filter((k) => st[k].status === 'in_progress' || st[k].status === 'failed');
+  ids = ids.filter((id) => !landedWhy(root, id));
   const out = [];
   for (const id of ids) {
     if (!c.tasks.some((t) => t.id === id)) continue;

@@ -43,14 +43,23 @@ export function baseTrailer(root) {
 
 /**
  * Where the base revision comes from, first match wins: --base, the task's own `base` in the contract,
- * the base pinned when the task started (`proofline next`), a Proofline-Base trailer on HEAD, the default
- * (defaults.base, else <defaults.remote>/<defaults.branch>).
+ * the most recent base pinned when the task started (`proofline next`, and a later `next --base`),
+ * a Proofline-Base trailer on HEAD, the default (defaults.base, else <defaults.remote>/<defaults.branch>).
  */
+export function latestStart(root, taskId) {
+  const log = readLog(root);
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if (e.type === 'task_started' && e.data?.task === taskId && e.data.base) return e.data.base;
+  }
+  return null;
+}
+
 export function baseFor(root, c, t, explicit) {
   if (explicit) return { ref: explicit, source: '--base' };
   if (t.base) return { ref: t.base, source: 'contract' };
-  const started = readLog(root).find((e) => e.type === 'task_started' && e.data.task === t.id);
-  if (started?.data.base) return { ref: started.data.base, source: 'pinned at start' };
+  const started = latestStart(root, t.id);
+  if (started) return { ref: started, source: 'pinned at start' };
   const tr = baseTrailer(root);
   if (tr) return { ref: tr, source: 'commit trailer' };
   return { ref: C.defaultBase(c), source: 'default' };
