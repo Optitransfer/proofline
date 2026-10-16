@@ -187,6 +187,8 @@ Two or more builders can share one contract. A task may carry an `owner`, and `d
 
 `proofline contract scaffold --title ... --scope a,b [--kind feature|docs|release]` prints a task with the standard criteria and the default stop rules. It does not write the contract. A feature gets a red-then-green test and the suite; docs gets a grep; release gets one command. Scope and pushed are always there. `contract validate` refuses a task with no stop rules, a task with no scope criterion, a criterion whose file, path, test file or entry sits outside that scope, a double-quoted `sh -c` or `bash -c` command that contains `$`, and a red-then-green criterion with no test file. A grep whose pattern already matches on the base revision is a warning, and the warning names that revision. `brief` and `steer` still run when a loaded task has no stop rules.
 
+`proofline contract merge <fragment.json> [--owners a=b,c=d]` appends the fragment's tasks and any owner rule that is not already there. A duplicate id is refused and the file is left untouched. Existing tasks and the bytes around them stay. The command prints the sha256 of the result. `proofline contract coverage <REQUIREMENTS.md> [--contracts a.json,b.json]` reads ids from lines of the form `- ID: text` and prints one line per id with the tasks that name it, or `MISSING`. A task that names an id the file does not list is `unknown`. The exit code is 1 when any id is missing or unknown.
+
 
 ### Git hooks
 

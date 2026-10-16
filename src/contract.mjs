@@ -257,3 +257,111 @@ export function weakenings(base, cur) {
 }
 
 export function loadFile(f) { return JSON.parse(fs.readFileSync(f, 'utf8')); }
+
+/** End index of the JSON array named `key`, so an append can keep every byte before it. */
+function arrayEnd(text, key) {
+  const marker = `"${key}"`;
+  const at = text.indexOf(marker);
+  if (at < 0) return null;
+  const bracket = text.indexOf('[', at);
+  if (bracket < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = bracket; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '[') depth++;
+    else if (c === ']') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return null;
+}
+
+function insertValues(text, key, values) {
+  if (!values.length) return text;
+  const end = arrayEnd(text, key);
+  if (end == null) throw new Error(`no ${key} array`);
+  const body = text.slice(text.lastIndexOf('[', end) + 1, end);
+  const lines = values.map((v) => '    ' + JSON.stringify(v)).join(',\n');
+  const chunk = body.trim() ? `,\n${lines}` : `\n${lines}\n  `;
+  return text.slice(0, end) + chunk + text.slice(end);
+}
+
+function ownerTable(spec) {
+  const map = new Map();
+  if (!spec) return map;
+  for (const pair of String(spec).split(',')) {
+    const [from, to] = pair.split('=').map((s) => s.trim());
+    if (from && to) map.set(from, to);
+  }
+  return map;
+}
+
+/**
+ * Append a fragment's tasks and new owner rules. A duplicate id is refused and the file is left untouched.
+ * Existing bytes stay. The return is the sha256 of the file after the append.
+ */
+export function mergeContract(root, fragmentPath, { owners } = {}) {
+  const fragment = loadFile(fragmentPath);
+  const tasks = (Array.isArray(fragment) ? fragment : fragment.tasks || []).map((t) => ({ ...t }));
+  const rules = Array.isArray(fragment) ? [] : (fragment.owner_rules || []).filter((r) => typeof r === 'string');
+  const map = ownerTable(owners);
+  for (const t of tasks) if (typeof t.owner === 'string' && map.has(t.owner)) t.owner = map.get(t.owner);
+  const file = contractPath(root);
+  const before = fs.readFileSync(file, 'utf8');
+  const current = JSON.parse(before);
+  const have = new Set((current.tasks || []).map((t) => t.id));
+  for (const t of tasks) {
+    if (!t.id || have.has(t.id)) throw new Error(`duplicate task id ${t.id || '(missing)'}`);
+    have.add(t.id);
+  }
+  const haveRules = new Set(current.owner_rules || []);
+  const freshRules = rules.filter((r) => !haveRules.has(r));
+  let next = insertValues(before, 'tasks', tasks);
+  if (freshRules.length) {
+    if (arrayEnd(next, 'owner_rules') == null) throw new Error('no owner_rules array');
+    next = insertValues(next, 'owner_rules', freshRules);
+  }
+  if (next !== before) fs.writeFileSync(file, next);
+  const bytes = fs.readFileSync(file);
+  return { sha256: sha256(bytes), added: tasks.map((t) => t.id), owner_rules: freshRules };
+}
+
+/** One line per requirement id: the tasks that name it, or MISSING. An id a task names that the file does not list is unknown. */
+export function coverageReport(root, requirementsPath, { contracts } = {}) {
+  const text = fs.readFileSync(requirementsPath, 'utf8');
+  const ids = [];
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^- ([^:]+):/);
+    if (m) ids.push(m[1].trim());
+  }
+  const known = new Set(ids);
+  const covered = new Map(ids.map((id) => [id, []]));
+  const unknown = [];
+  const files = contracts && contracts.length ? contracts : [contractPath(root)];
+  for (const f of files) {
+    const c = loadFile(f);
+    for (const t of c.tasks || []) {
+      for (const req of t.requirements || []) {
+        if (known.has(req)) covered.get(req).push(t.id);
+        else unknown.push(`${req} unknown ${t.id}`);
+      }
+    }
+  }
+  const lines = ids.map((id) => {
+    const tasks = covered.get(id);
+    return tasks.length ? `${id} ${tasks.join(',')}` : `${id} MISSING`;
+  });
+  lines.push(...unknown);
+  const ok = !lines.some((l) => l.endsWith(' MISSING') || l.includes(' unknown '));
+  return { ok, lines };
+}
