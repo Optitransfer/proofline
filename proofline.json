@@ -15,7 +15,14 @@
     "branch": "main",
     "flaky_reruns": 1,
     "max_corrective_cycles": 3,
-    "regression_tolerance_pct": 20
+    "regression_tolerance_pct": 20,
+    "reuse_results": true,
+    "reuse_max_age_h": 24,
+    "owners": [
+      "lane-a",
+      "lane-b",
+      "lane-c"
+    ]
   },
   "forbidden": {
     "test_skip_only": true,
@@ -24,7 +31,6 @@
     "test_file_deletion": true,
     "no_verify": true,
     "bypass_env": [
-      "HIVEVAULT_ALLOW_PUBLIC_PUSH",
       "SKIP_HOOKS",
       "HUSKY=0",
       "PROOFLINE_SKIP",
@@ -37,7 +43,8 @@
       "docs/**",
       "*.md",
       "examples/demo/**",
-      "hooks/**"
+      "hooks/**",
+      "examples/demo-contract/**"
     ]
   },
   "baseline": {
@@ -106,10 +113,10 @@
         {
           "id": "PL-SELF-AC03",
           "mandatory": true,
-          "statement": "Worked hivevault contract is valid",
+          "statement": "the shipped example contract is valid",
           "verifier": {
             "type": "command",
-            "cmd": "node bin/proofline.mjs contract validate --root examples/hivevault-fastpath"
+            "cmd": "node bin/proofline.mjs --root examples/demo-contract contract validate"
           }
         },
         {
@@ -155,8 +162,863 @@
       "stop_rules": [
         "If any metric misses its threshold: STOP, report the measured number, a per-stage trace and file:line. Do not start the next task."
       ]
+    },
+    {
+      "id": "PL-00",
+      "title": "A contract change commits only with the owner's approval marker for its exact bytes",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [],
+      "requirements": [
+        "PL-R01"
+      ],
+      "description": "The pre-commit hook (src/index.mjs hookPreCommit, src/contract.mjs weakenings) keeps refusing a staged proofline.json whose weakenings against HEAD are not empty. The one path through it is an approval marker written by the owner: a file named <approvals directory>/<sha256 hex of the staged proofline.json bytes>. The approvals directory is set per clone with `proofline init --approvals <dir>` (re-runnable) and kept in .proofline/config.json, which is never committed; with no directory configured every contract change is refused. The refusal message prints the weakenings, the sha256 of the staged bytes and the marker path that would approve them, so the proposal can be posted and approved by hash. A marker whose name is not the sha256 of the staged bytes does not count, and what else the commit stages makes no difference: a commit of proofline.json alone without a marker is refused, a commit of proofline.json beside code with the marker passes. `gate` and the report keep showing contract_change against the base. Follow-up outside this task: once @optitransfer/agentkey ships signing (AK-03), the marker content becomes an agentkey signature over the hash, verified against the owner key named in the contract. Red on the parent: with the marker present for a changed criterion command, `proofline hook pre-commit` still refuses, because no marker logic exists.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "AGENTS.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-00-AC01",
+          "mandatory": true,
+          "statement": "with the marker for the staged bytes present, a contract change (changed criterion command) is refused on the parent and passes on the head; without a marker, or with a marker named for other bytes, it is refused on the head whatever else is staged; proofline.json beside a code file with the marker passes",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/hook_approval.test.mjs",
+            "test_name": null,
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-00-AC02",
+          "mandatory": true,
+          "statement": "the refusal names the hash and the marker path",
+          "verifier": {
+            "type": "grep",
+            "file": "src/index.mjs",
+            "pattern": "sha256",
+            "why": "the message is what the owner approves by"
+          }
+        },
+        {
+          "id": "PL-00-AC03",
+          "mandatory": true,
+          "statement": "the rule is documented",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "approval marker",
+            "why": "a user must know how a contract change is approved"
+          }
+        },
+        {
+          "id": "PL-00-AC04",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "timeout_s": 900,
+            "min_tests": 89
+          }
+        },
+        {
+          "id": "PL-00-AC05",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope",
+            "allow": [
+              "src/**",
+              "bin/**",
+              "test/**",
+              "docs/**",
+              "README.md",
+              "AGENTS.md",
+              "CHANGELOG.md"
+            ]
+          }
+        },
+        {
+          "id": "PL-00-AC06",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "No bypass variable and no approval by staged-set shape; if the marker cannot be bound to the exact staged bytes: STOP and report."
+      ]
+    },
+    {
+      "id": "PL-01",
+      "title": "Public package: private:false, test glob, next prerelease published",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [],
+      "requirements": [
+        "PL-R01",
+        "ZR-01",
+        "ZR-09"
+      ],
+      "description": "package.json private:false, version 0.2.0-next.0, files whitelist, scripts.test = `node --test test/*.test.mjs` (so fixtures under fixtures/ are never run as tests). README quick start uses `npx proofline`. LICENSE stays Apache-2.0; add NOTICE. Publish @optitransfer/proofline@0.2.0-next.0 under dist-tag next with --access public from the maintainer machine, without provenance: npm generates it only inside a CI runner, and GitHub Actions on this account is locked by billing, so the release of PL-08 carries it.",
+      "scope": {
+        "allow": [
+          "package.json",
+          "src/**",
+          "bin/**",
+          "docs/**",
+          "README.md",
+          "LICENSE",
+          "NOTICE",
+          "CHANGELOG.md",
+          "test/**"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-01-AC01",
+          "mandatory": true,
+          "statement": "package is publishable",
+          "verifier": {
+            "type": "command",
+            "cmd": "node -e \"const p=require('./package.json');process.exit(p.private?1:0)\"",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-01-AC02",
+          "mandatory": true,
+          "statement": "test script is scoped to test/*.test.mjs",
+          "verifier": {
+            "type": "grep",
+            "file": "package.json",
+            "pattern": "\"test\":\\s*\"node --test test/\\*\\.test\\.mjs\"",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-01-AC03",
+          "mandatory": true,
+          "statement": "@optitransfer/proofline@next published",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c \"npm view @optitransfer/proofline@next version | grep -q 0.2.0-next\"",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-01-AC04",
+          "mandatory": true,
+          "statement": "npm pack succeeds and the tarball runs status in a fresh clone",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c \"npm pack --silent >/dev/null && t=$(ls proofline-*.tgz|tail -1) && d=$(mktemp -d) && cd $d && git init -q && npm init -y >/dev/null && npm i -s $OLDPWD/$t >/dev/null && npx proofline status --json >/dev/null; code=$?; exit $([ $code -le 3 ] && echo 0 || echo 1)\"",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-01-AC05",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-01-AC06",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-01-AC07",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started."
+      ]
+    },
+    {
+      "id": "PL-02",
+      "title": "receipt command, contract mode, signed with agentkey",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-01"
+      ],
+      "requirements": [
+        "PL-R02",
+        "RF-01",
+        "RF-02",
+        "RF-03",
+        "RF-04",
+        "RF-05"
+      ],
+      "description": "External dependency: @optitransfer/agentkey@next on npm (AK-02); if absent report BLOCKED. Export buildReceipt(opts) from src/receipt.mjs and call it from bin/proofline.mjs. New command `proofline receipt <TASK> [--role <role>] [--base <sha>] [--out <path>]`. Runs verify for the task and builds the predicate https://proofline.dev/receipt/v1 with the fields (level, producer, base, task, tests{changed, red_on_base{ran,failed,output_sha256}, green_on_head{ran,passed,output_sha256}}, suite{command,exit,count,duration_ms}, metrics[], scope{allowed,changed,pass}, forbidden{findings,pass}, claims{reported,reconciled}, agent{role,kid,run_id,model?,trace?}, memory?, timestamps). Subject: {name: \"git+<remote url>@<ref>\", digest:{gitCommit, gitTree}}. Signs with agentkey signDSSE for the role (default PROOFLINE_AGENT_ROLE, else level L0 unsigned). Writes .proofline/receipts/<sha7>.json (the envelope); init already ignores .proofline/ (src/index.mjs:24), and `proofline init --keep-receipts` adds the negation `!.proofline/receipts/` for teams that commit them. Subject name: \"git+<remote url>@<ref>\" for public repositories, \"<ref>\" with the repository only in predicate.repository for private ones. Subject binding rules every verifier applies: subject.gitCommit must equal the head being judged and predicate.base.gitCommit the base; a tree-only match marks base-relative fields (red_on_base, scope) unverified unless recomputed. tests.red_on_base and green_on_head carry attempts; suite carries reruns. Red means exit != 0 on base (a module-not-found counts), stated in docs. schema/receipt-v1.json is a JSON Schema (draft 2020-12) for the predicate; the command validates against it before signing. Every boolean has a sibling `ran`.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "schema/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md",
+          "package.json"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-02-AC01",
+          "mandatory": true,
+          "statement": "a fixture task yields a receipt whose predicate validates against schema/receipt-v1.json and whose envelope verifies with agentkey; red_on_base, green_on_head, suite, scope, forbidden, claims populated",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/receipt.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-02-AC02",
+          "mandatory": true,
+          "statement": "schema file exists",
+          "verifier": {
+            "type": "file_exists",
+            "path": "schema/receipt-v1.json"
+          }
+        },
+        {
+          "id": "PL-02-AC03",
+          "mandatory": true,
+          "statement": "predicateType constant is the v1 URL",
+          "verifier": {
+            "type": "grep",
+            "file": "src/receipt.mjs",
+            "pattern": "https://proofline\\.dev/receipt/v1",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-02-AC04",
+          "mandatory": true,
+          "statement": "agentkey is a dependency",
+          "verifier": {
+            "type": "command",
+            "cmd": "node -e \"const p=require('./package.json');process.exit((p.dependencies||{}).agentkey?0:1)\"",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-02-AC05",
+          "mandatory": true,
+          "statement": "receipt is reachable from the CLI default path",
+          "verifier": {
+            "type": "wiring",
+            "symbol": "buildReceipt",
+            "entry": "bin/proofline.mjs"
+          }
+        },
+        {
+          "id": "PL-02-AC06",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-02-AC07",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-02-AC08",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started."
+      ]
+    },
+    {
+      "id": "PL-03",
+      "title": "Zero-config inference: suite, changed tests, red/green without a contract",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-02"
+      ],
+      "requirements": [
+        "PL-R03",
+        "ZR-07",
+        "IM-02"
+      ],
+      "description": "Inference rules live in src/inference.json (data, PRs welcome): package.json scripts.test, and when absent vitest/jest by devDependency; Cargo.toml; pyproject [tool.pytest] or pytest.ini; go.mod; build.gradle; *.sln. Manifests and forbidden rules are read from the BASE revision so a PR cannot change the test command; a change to scripts.test, Cargo.toml, pytest.ini, CI files or the calling workflow is a forbidden finding test_command_changed. Monorepos: the manifest nearest to each changed test file decides the suite; predicate.suites[] when more than one. Without proofline.json, `proofline receipt --base <sha>` infers: suite command from package.json scripts.test, Cargo.toml (cargo test), pyproject.toml or pytest.ini (pytest), go.mod (go test ./...); changed test files from the diff by path convention (test/, tests/, *_test.*, *.test.*, *.spec.*, test_*.py); runs them on base (worktree) and head; scope defaults to any path; forbidden rules apply. Nothing inferable: L0 receipt with every ran:false and the reason, exit 2, never a throw. Fixtures under fixtures/{node,rust,python,go} at the repo root (never under test/); the rust/python/go runs are skipped with status blocked (not pass) when the toolchain is missing, and the Node fixture always runs.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-03-AC01",
+          "mandatory": true,
+          "statement": "Node fixture: suite inferred, changed test found, L1 produced; empty fixture yields L0 and exit 2 without throwing",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/zeroconf.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-03-AC02",
+          "mandatory": true,
+          "statement": "rust, python and go fixtures report blocked (not pass) when their toolchain is absent and pass when present",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/zeroconf_toolchains.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-03-AC03",
+          "mandatory": true,
+          "statement": "inference rules are data",
+          "verifier": {
+            "type": "file_exists",
+            "path": "src/inference.json"
+          }
+        },
+        {
+          "id": "PL-03-AC04",
+          "mandatory": true,
+          "statement": "test command changes are a forbidden finding",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/test_command_changed.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-03-AC05",
+          "mandatory": true,
+          "statement": "inference table documented",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/receipt.md",
+            "pattern": "go test \\./\\.\\.\\.",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-03-AC06",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-03-AC07",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-03-AC08",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started."
+      ]
+    },
+    {
+      "id": "PL-04",
+      "title": "verify-receipt with --recompute and exit codes",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-02"
+      ],
+      "requirements": [
+        "PL-R04",
+        "RF-08",
+        "ZR-01"
+      ],
+      "description": "Export verifyReceipt(envelopePath, opts) from src/verify-receipt.mjs; bin/proofline.mjs and the action call the same function. `proofline verify-receipt <envelope> [--keys <dir>] [--sigstore] [--recompute --base <sha>]`. Checks DSSE signatures (agentkey keys from --keys, default $AGENTKEY_HOME/keys; --sigstore verifies a Sigstore bundle via the sigstore npm verifier loaded lazily; a bundle carries exactly one signature, the L1 envelope is a separate file referenced by predicate.agent.l1_envelope_sha256 and verified with --keys when present), validates the statement and predicate against the schema, prints the level. --recompute re-runs red/green, suite (unless --no-suite), scope and forbidden from the diff and prints every field that differs. Exit 0 verified, 1 failed or differs, 2 unknown key or unverifiable, 3 usage. Works offline without --sigstore.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-04-AC01",
+          "mandatory": true,
+          "statement": "altered green_on_head is reported as differing under --recompute; signature and schema failures exit 1; unknown key exits 2",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/verify_receipt.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-04-AC02",
+          "mandatory": true,
+          "statement": "offline verification needs no network: test runs with a sandboxed empty HTTP_PROXY and no sigstore module",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/verify_receipt_offline.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-04-AC03",
+          "mandatory": true,
+          "statement": "verifier is shared code, not duplicated: one exported verifyReceipt used by bin and by the action entry",
+          "verifier": {
+            "type": "wiring",
+            "symbol": "verifyReceipt",
+            "entry": "bin/proofline.mjs"
+          }
+        },
+        {
+          "id": "PL-04-AC04",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-04-AC05",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-04-AC06",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started."
+      ]
+    },
+    {
+      "id": "PL-05",
+      "title": "memory attachment from hivevault and --vault note writer",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-02"
+      ],
+      "requirements": [
+        "PL-R05",
+        "HV-R01",
+        "HV-R04",
+        "ZR-07"
+      ],
+      "description": "If HIVEVAULT_URL (default http://127.0.0.1:7788) answers GET /v1/state/digest with the token in HIVEVAULT_TOKEN within 2 s, the L1 receipt and the vault note get memory:{vault_digest, frontier}; an L2 receipt (mode ci) carries only memory_commitment = sha256(vault_id || digest || JSON(frontier)) so replica ids never reach a public Check Run; otherwise the field is absent and exit code is unchanged. The digest route already returns {digest, ops_digest, notes, ops, frontier, pairs} (hivevault server/src/digest.mjs:38); vault_digest = digest. `--vault` (or PROOFLINE_VAULT=1) also writes the receipt note to work/receipts/<YYYY-MM-DD>-<role>-<sha7>.md through the vault HTTP write route with origin \"proofline\", frontmatter (kind: proof-receipt, level, subject, agent, predicate_type, summary, envelope_sha256), body = summary table + fenced json envelope. The test starts a throwaway hivevault daemon from the hivevault npm package (devDependency, pinned).",
+      "scope": {
+        "allow": [
+          "src/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md",
+          "package.json"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-05-AC01",
+          "mandatory": true,
+          "statement": "with a test daemon: vault_digest equals the digest field of GET /v1/state/digest, mode ci yields only memory_commitment, and the note lands at work/receipts/ with the frontmatter; without a daemon: field absent, exit 0",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/vault_link.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-05-AC02",
+          "mandatory": true,
+          "statement": "daemon probe has a 2 s timeout",
+          "verifier": {
+            "type": "grep",
+            "file": "src/vault.mjs",
+            "pattern": "timeout.*2000|2000.*timeout",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-05-AC03",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-05-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-05-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
+      ]
+    },
+    {
+      "id": "PL-06",
+      "title": "MCP tools receipt and verify_receipt",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-04"
+      ],
+      "requirements": [
+        "PL-R05"
+      ],
+      "description": "src/mcp.mjs (seven tools today) gains tools `receipt` (args: task?, base?, role?, vault?) and `verify_receipt` (args: path, recompute?, base?). Both return the same JSON the CLI prints with --json. tools/list shows nine tools.",
+      "scope": {
+        "allow": [
+          "src/mcp.mjs",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-06-AC01",
+          "mandatory": true,
+          "statement": "tools/list lists receipt and verify_receipt; both called end to end over stdio",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/mcp_receipt.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-06-AC02",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-06-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-06-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started."
+      ]
+    },
+    {
+      "id": "PL-07",
+      "title": "Claude Code Stop hook: one receipt per session that committed",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-05"
+      ],
+      "requirements": [
+        "PL-R05",
+        "IM-03"
+      ],
+      "description": "`proofline hook stop` reads the Claude Code Stop hook payload on stdin (transcript path), determines whether the session created commits not yet receipted (git log since the session start, Agent-Run trailer or .proofline/session marker), and runs `proofline receipt --role claude-code` once for the range; exits 0 silently otherwise. `proofline connect claude-code` installs the hook into ~/.claude/settings.json without touching other hooks (merge, never overwrite). When hivevault installed its own Stop hook, proofline runs after it and writes one receipt, not two. When proofline makes the commit (`proofline commit`, optional), it adds the Agent-Key and Agent-Run trailers from agentkey.trailer().",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-07-AC01",
+          "mandatory": true,
+          "statement": "fixture transcript with a commit yields exactly one receipt; a session with no commit yields none; a second run on the same range yields none",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/hook_stop.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-07-AC02",
+          "mandatory": true,
+          "statement": "settings merge keeps existing hooks",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/connect_claude_code.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-07-AC03",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-07-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-07-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started."
+      ]
+    },
+    {
+      "id": "PL-08",
+      "title": "docs/receipt.md, JSON Schema, trust levels, changelog, publish 0.2.0",
+      "phase": "release",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-03",
+        "PL-04",
+        "PL-06",
+        "PL-07"
+      ],
+      "requirements": [
+        "PL-R06",
+        "RF-03",
+        "ZR-11",
+        "ZR-12"
+      ],
+      "description": "docs/receipt.md states the predicate, every field, the three trust levels (L0 claim, L1 agent-signed, L2 CI-verified), what a receipt does not claim, and the verification procedure. The first line of every Check summary and CLI summary names what was not run. Publish @optitransfer/proofline@0.2.0 with provenance; record in docs/releases.md.",
+      "scope": {
+        "allow": [
+          "docs/**",
+          "schema/**",
+          "README.md",
+          "CHANGELOG.md",
+          ".github/**",
+          "package.json",
+          "test/**",
+          "PATENTS-NONASSERT.md",
+          "LICENSE-SPEC",
+          "NOTICE",
+          "CONTRIBUTING.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-08-AC01",
+          "mandatory": true,
+          "statement": "fixture receipts validate against the schema in a test that loads docs/receipt.md field list and asserts every documented field is in the schema",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/docs_schema_sync.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-08-AC02",
+          "mandatory": true,
+          "statement": "trust levels documented",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/receipt.md",
+            "pattern": "L2 CI-verified",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-08-AC03",
+          "mandatory": true,
+          "statement": "what a receipt does not claim is documented",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/receipt.md",
+            "pattern": "does not (say|claim)",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-08-AC04",
+          "mandatory": true,
+          "statement": "published version recorded",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/releases.md",
+            "pattern": "@optitransfer/proofline@0\\.2\\.0",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-08-AC05",
+          "mandatory": true,
+          "statement": "fork and workflow-edit policy documented",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/receipt.md",
+            "pattern": "L1-ci",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-08-AC06",
+          "mandatory": true,
+          "statement": "interim patent statement present",
+          "verifier": {
+            "type": "file_exists",
+            "path": "PATENTS-NONASSERT.md"
+          }
+        },
+        {
+          "id": "PL-08-AC07",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-08-AC08",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-08-AC09",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
+      ]
     }
   ],
+  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. PL-SELF stays: proofline verifies itself with its own contract.",
   "ci": {
     "tasks": [
       "PL-SELF"
