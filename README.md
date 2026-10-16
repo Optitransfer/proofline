@@ -116,6 +116,28 @@ DECISION: FAIL
 
 Exit codes: `0` PASS, `1` FAIL, `2` BLOCKED, `3` usage. Every command takes `--json`. The published package is `@optitransfer/proofline` at `0.2.0-next.0` on the `next` dist-tag: `npx @optitransfer/proofline@next`.
 
+## One story, start to finish
+
+Maya maintains a Node service and wants an agent to add rate limiting without her reading every line it writes.
+
+1. **She installs Proofline in her repository.** `npm i -D @optitransfer/proofline@next` then `npx proofline init`. That writes an empty `proofline.json`, installs the two git hooks and records where her approvals live. From now on the hooks run on every commit and push in that repository.
+
+2. **She describes the task to her agent, in plain words.** "Add per-client rate limiting to the API, 100 requests a minute, with a 429 and a Retry-After header, and keep every existing test green."
+
+3. **The agent turns the words into a contract and proposes it.** It runs `proofline contract create` with the task: a title, the files it may touch (`src/**`, `test/**`), and acceptance criteria that are checks, not sentences: a new test that fails before the change and passes after it, a grep for `Retry-After` in the handler, the full suite green, changes inside the scope, committed and pushed. The proposal is the contract's new bytes and their hash; the agent cannot put it into force.
+
+4. **Maya reads the contract and locks it.** Two minutes, because it is short and every line is checkable. She approves that hash as the owner. The hooks accept only contract bytes she has approved, so the agent cannot change the rules it is judged by.
+
+5. **The agent builds.** `proofline next` hands it the one active task with its brief. It writes the failing test first, then the code, and runs `proofline verify TASK` as often as it likes. Proofline re-runs every criterion itself, independently of what the agent says, and prints a corrective instruction for anything that is not yet true.
+
+6. **The agent commits and pushes through the hooks.** The pre-commit hook blocks the known shortcuts: skipped tests, raised timeouts, deleted assertions, a bypass flag. The pre-push hook runs the gate before anything leaves the machine; a FAIL stays local.
+
+7. **The agent reports, and the report is not the evidence.** "Done, 7d1c2e4, rate_limit.test.mjs." Proofline's gate compares that claim with what it measured itself. A claim the evidence does not support is rejected in the report.
+
+8. **Maya reads one page, not the diff.** The gate report lists every criterion with PASS or FAIL and the measured detail. A signed receipt (through agentkey) says which agent role produced the commit, on which machine, against which contract hash. She merges.
+
+What she never did: read the agent's prose for reassurance, trust a green checkmark the agent printed, or let the agent change the rules it was being judged by.
+
 ## Why
 
 An agent's report is a claim. Left to itself it says "done" for a test it skipped, a timeout it raised, a target it lowered, a commit it never pushed, or a number it did not measure. Reviewing every claim by hand does not scale past one agent, and asking a second model whether the first one is right only adds a second opinion.
