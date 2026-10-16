@@ -98,19 +98,119 @@ export function contractCreate(root, spec) {
 }
 
 export function taskNext(root, { owner } = {}) {
-  const n = E.next(root, { owner });
-  if (n.task && n.status === 'not_started') { const c = C.load(root);
-    const base = resolveBase(root, C.defaultBase(c)) || git(['rev-parse', 'HEAD'], root).out;
+  const settled = settleLanded(root);
+  let c;
+  try { c = C.load(root); } catch { c = { tasks: [] }; }
+  const n = E.next(root, { owner, skip: c.tasks.map((t) => t.id).filter((id) => landedWhy(root, id)) });
+  if (n.task && n.status === 'not_started') { const loaded = C.load(root);
+    const base = resolveBase(root, C.defaultBase(loaded)) || git(['rev-parse', 'HEAD'], root).out;
     record(root, 'task_started', { task: n.task, base, ...(owner ? { owner } : {}) }); n.status = 'in_progress'; }
   if (n.task) {
     fs.writeFileSync(path.join(root, '.proofline', 'active'), n.task + '\n');
     n.base = readLog(root).find((e) => e.type === 'task_started' && e.data.task === n.task)?.data.base;
     if (n.base) n.brief += `\n\n## Base\nPinned at start: ${n.base}. The pin lives in the local .proofline/ log; in another clone, gate with \`--base ${n.base}\`, or end the task commit message with the trailer \`Proofline-Base: ${n.base}\`.`;
   }
+  if (settled) {
+    n.landed = settled.message;
+    if (n.brief) n.brief = `${settled.message}\n\n${n.brief}`;
+    else n.message = n.message ? `${settled.message}\n\n${n.message}` : settled.message;
+  }
   return n;
 }
 
 export const activeTask = (root) => { try { return fs.readFileSync(path.join(root, '.proofline', 'active'), 'utf8').trim() || null; } catch { return null; } };
+
+const activePath = (root) => path.join(root, '.proofline', 'active');
+
+/** Task id named by a commit message: a (TASK-ID) subject suffix, else a Proofline-Task trailer. */
+export function taskFromMessage(body, known) {
+  const subject = String(body || '').split('\n')[0];
+  const m = subject.match(/\(([A-Za-z][A-Za-z0-9-]*)\)\s*$/);
+  if (m && known.has(m[1])) return m[1];
+  const last = String(body || '').trim().split(/\n[ \t]*\n/).pop() || '';
+  for (const line of last.split('\n')) {
+    const t = line.match(/^Proofline-Task:[ \t]*(\S+)\s*$/);
+    if (t && known.has(t[1])) return t[1];
+  }
+  return null;
+}
+
+/** Newest commit on origin/main that names `id`, or null. */
+function namedHeadOnMain(root, id) {
+  const log = git(['log', 'origin/main', '-z', '--format=%H%x1f%B'], root);
+  if (!log.ok || !log.out) return null;
+  const known = new Set([id]);
+  for (const rec of log.out.split('\0')) {
+    const i = rec.indexOf('\x1f');
+    if (i < 0) continue;
+    const sha = rec.slice(0, i).trim();
+    if (taskFromMessage(rec.slice(i + 1), known)) return sha;
+  }
+  return null;
+}
+
+/**
+ * A pushed criterion PASS in the latest report.
+ * A PASS recorded at an older HEAD is stale once the task has new commits, so it does not count as landed.
+ * A report with no head (a recorded PASS and nothing else) still counts.
+ */
+function pushedPass(root, id) {
+  let head = null;
+  let pass = false;
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(root, '.proofline', 'reports', `${id}-latest.json`), 'utf8'));
+    pass = (j.results || []).some((r) => r.type === 'pushed' && r.status === 'pass');
+    if (typeof j.head === 'string' && /^[0-9a-f]{40}$/.test(j.head)) head = j.head;
+  } catch { return false; }
+  if (!pass) return false;
+  if (!head) {
+    const log = readLog(root);
+    for (let i = log.length - 1; i >= 0; i--) {
+      const e = log[i];
+      if (e.type === 'gate' && e.data?.task === id && /^[0-9a-f]{40}$/.test(e.data.head || '')) { head = e.data.head; break; }
+    }
+  }
+  if (!head) return true;
+  return git(['rev-parse', 'HEAD'], root).out === head;
+}
+
+/** Why an active task has landed, or null. Does not touch the active file. */
+export function landedWhy(root, id) {
+  let c;
+  try { c = C.load(root); } catch { return null; }
+  if (!c.tasks?.some((t) => t.id === id)) return null;
+  const sha = namedHeadOnMain(root, id);
+  if (sha) return { kind: 'head', sha };
+  if (pushedPass(root, id)) return { kind: 'pushed' };
+  return null;
+}
+
+function landedMessage(id, why) {
+  if (why.kind === 'head') return `${id} landed: its head ${why.sha.slice(0, 8)} is an ancestor of origin/main. Cleared .proofline/active.`;
+  return `${id} landed: its pushed criterion has a PASS record. Cleared .proofline/active.`;
+}
+
+/** Clear .proofline/active when that task has landed. Returns the sentence to report, or null. */
+export function settleLanded(root) {
+  const id = activeTask(root);
+  if (!id) return null;
+  const why = landedWhy(root, id);
+  if (!why) return null;
+  fs.rmSync(activePath(root), { force: true });
+  return { task: id, message: landedMessage(id, why) };
+}
+
+function commitsOnPushLine(root, line) {
+  const p = line.trim().split(/\s+/);
+  if (p.length < 4) return [];
+  const local = p[1];
+  const remote = p[3];
+  if (!/^[0-9a-f]{40}$/i.test(local) || /^0+$/.test(local)) return [];
+  const spec = /^0+$/.test(remote) ? [local, '--not', '--remotes'] : [`${remote}..${local}`];
+  const r = git(['rev-list', ...spec], root);
+  if (!r.ok || !r.out) return [];
+  return r.out.split('\n').filter(Boolean);
+}
 
 export function evidenceRecord(root, type, data, actor = 'agent') {
   // Agent-recorded evidence is stored as a claim-class event; it is never used to pass a gate.
@@ -159,6 +259,8 @@ export function approvalsDir(root) {
  *  A weakening passes only when an approval marker named with the sha256 of those bytes exists.
  *  What else is staged does not matter. There is no bypass. */
 export function hookPreCommit(root) {
+  // Do not clear here. The commit under way is not HEAD yet, so a PASS recorded at the
+  // current head would look landed and the active task would be dropped before its own commit.
   const c = C.load(root);
   const head = git(['rev-parse', '--verify', '--quiet', 'HEAD'], root);
   if (!head.ok) return { ok: true, msg: 'first commit' };
@@ -182,22 +284,63 @@ export function hookPreCommit(root) {
     w = C.weakenings(base, { tasks: [] });
     note = 'staged proofline.json is absent, so no approval marker can be bound to its bytes';
   }
-  const msgs = [...f.map((x) => `forbidden ${x.rule}: ${x.file}: ${x.line} (${x.why})`), ...w.map((x) => `contract weakened: ${x}`), ...(note ? [note] : [])];
-  return { ok: msgs.length === 0, msg: msgs.join('\n') };
+  const problems = [...f.map((x) => `forbidden ${x.rule}: ${x.file}: ${x.line} (${x.why})`), ...w.map((x) => `contract weakened: ${x}`), ...(note ? [note] : [])];
+  return { ok: problems.length === 0, msg: problems.join('\n') };
 }
 
-/** pre-push: the active task (or every in-progress task) must gate PASS on this exact HEAD. */
-export function hookPrePush(root) {
+/**
+ * pre-push. A push is gated on the task its commits name ((TASK-ID) subject suffix or Proofline-Task trailer).
+ * A commit that names none falls back to the active task. No active task and no named task is a refusal
+ * that prints `proofline next`. An active task that has landed is cleared and never gated.
+ * With no push lines (a direct call), the previous rule stands: the active task, else every in-progress or failed task.
+ */
+export function hookPrePush(root, { lines } = {}) {
+  const settled = settleLanded(root);
   const c = C.load(root);
   const errs = C.validate(c);
-  if (errs.length) return { ok: false, msg: 'contract invalid:\n' + errs.join('\n') };
-  const st = E.taskStatus(root, c);
-  const ids = activeTask(root) ? [activeTask(root)] : Object.keys(st).filter((k) => st[k].status === 'in_progress' || st[k].status === 'failed');
+  const note = settled?.message || '';
+  const join = (...parts) => parts.flat().filter(Boolean).join('\n\n');
+  if (errs.length) return { ok: false, msg: join(note, 'contract invalid:\n' + errs.join('\n')) };
+  const haveLines = Array.isArray(lines) && lines.some((l) => l.trim());
+  let ids = null;
+  let refuse = '';
+  if (haveLines) {
+    const known = new Set(c.tasks.map((t) => t.id));
+    const commits = [...new Set(lines.flatMap((l) => commitsOnPushLine(root, l)))];
+    if (commits.length) {
+      const named = [];
+      let unnamed = false;
+      for (const sha of commits) {
+        const body = git(['log', '-1', '--format=%B', sha], root).out || '';
+        const id = taskFromMessage(body, known);
+        if (id) named.push(id);
+        else unnamed = true;
+      }
+      const namedSet = new Set(named);
+      ids = [...namedSet];
+      const active = activeTask(root);
+      if (unnamed && active && !landedWhy(root, active)) ids.push(active);
+      if (!ids.length) {
+        const started = readLog(root).some((e) => e.type === 'task_started');
+        if (!started) {
+          return { ok: true, msg: join(note, 'No task has a start record. Next step: proofline next') };
+        }
+        refuse = 'no active task and no commit names a task.\nNext step: proofline next';
+      }
+    }
+  }
+  if (!ids) {
+    const st = E.taskStatus(root, c);
+    const active = activeTask(root);
+    ids = active ? [active] : Object.keys(st).filter((k) => st[k].status === 'in_progress' || st[k].status === 'failed');
+    ids = ids.filter((id) => !landedWhy(root, id));
+  }
+  if (refuse) return { ok: false, msg: join(note, refuse) };
   const out = [];
   for (const id of ids) {
     if (!c.tasks.some((t) => t.id === id)) continue;
     const g = E.gate(root, id, { skipTypes: ['pushed'] });
     if (g.decision !== 'PASS') out.push(`${id}: ${g.decision}\n${g.corrective_prompt}`);
   }
-  return { ok: out.length === 0, msg: out.join('\n\n') };
+  return { ok: out.length === 0, msg: join(note, out.join('\n\n')) };
 }
