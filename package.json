@@ -55,5 +55,8 @@
     "demo": "node examples/demo/demo.mjs",
     "self-gate": "node bin/proofline.mjs gate PL-SELF --skip-pushed",
     "mcp": "node bin/proofline.mjs mcp"
+  },
+  "devDependencies": {
+    "hivevault": "0.3.3"
   }
 }
