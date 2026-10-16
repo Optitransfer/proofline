@@ -118,6 +118,12 @@ Exit codes: `0` PASS, `1` FAIL, `2` BLOCKED, `3` usage. Every command takes `--j
 
 ## How you use it, start to finish
 
+### Short path
+
+`proofline setup` then `proofline task "<plain words>"` then `proofline contract approve` then `proofline watch`.
+
+That is the short path: four commands, in that order. The diagram and the table below are the manual path.
+
 Three parties: **you** (the owner of the repository), **your agent** (Claude Code, Cursor, a CI job), and **Proofline** (the hooks and the gate in your repository). The agent builds; Proofline checks; you decide twice, once on the rules and once on the result.
 
 ```mermaid

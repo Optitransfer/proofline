@@ -5,6 +5,7 @@ All notable project changes are recorded here. Dates use ISO 8601 (`YYYY-MM-DD`)
 ## [Unreleased]
 
 ### Added
+- `proofline setup` installs the hooks, creates the owner key through agentkey and sets approvals to `.proofline/approvals`. `proofline task` writes a proposal from plain words and prints its hash. `proofline contract approve` shows the diff and, on y, writes the marker and applies the bytes. `proofline watch` prints the active task until the gate is PASS.
 - `proofline contract merge` appends a fragment's tasks and new owner rules, refuses a duplicate id, keeps the existing bytes and prints the sha256. `proofline contract coverage` prints each requirement id with the tasks that name it, or `MISSING`, and exits 1 on a gap or an unknown id.
 - `proofline contract scaffold` prints a task with a red-then-green test, the suite, scope, pushed and the default stop rules. `contract validate` refuses a task with no stop rules, a task with no scope criterion, a criterion path outside that scope, a double-quoted `sh -c` or `bash -c` command that contains `$`, and a red-then-green criterion with no test file. A grep that already matches on the base revision is a warning that names that revision. `brief` and `steer` no longer throw when a loaded task has no stop rules (#15).
 - `examples/demo/catch.mjs`: a short demo that catches a false report, a test that proves nothing, a skipped test with a raised timeout, a change outside the scope and a weakened contract, then passes the real work; its transcript is in the README.
