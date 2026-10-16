@@ -1487,6 +1487,497 @@
         "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
         "If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item."
       ]
+    },
+    {
+      "id": "PL-09",
+      "title": "The pre-push hook gates each commit being pushed, at that commit",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "TB-02"
+      ],
+      "requirements": [
+        "TB-R02"
+      ],
+      "description": "The hook reads the local sha on each stdin line git hands it, derives the task id from the (TASK-ID) suffix of that commit's subject (or the Proofline-Task trailer when present), and gates that task at that sha in a temporary worktree. The base is the most recent task_started record for the task, else the commit's parent, so a later start re-pins it. A worktree with no evidence still gates, a worktree with stale evidence cannot block a clean commit, and pushing the first commit of a chain gates that commit, not the branch tip. Refuses when any gated task is not PASS; prints the base it used in every refusal. Closes the three findings of 2026-10-16: the hook gated HEAD (issue 21), the base could not be re-pinned (issue 22), an evidence-free worktree passed (issue 23).",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-09-AC01",
+          "statement": "pushing the first commit of a two-commit branch gates that commit, not the tip",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/hook_push_sha.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-09-AC02",
+          "statement": "a second start of the same task moves the base, and the refusal names the base used",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/hook_base_repin.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-09-AC03",
+          "statement": "a push from a worktree with no evidence is gated; a commit whose task fails is refused",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/hook_fresh_worktree.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-09-AC04",
+          "statement": "the hook reads stdin and never HEAD for the gated revision",
+          "verifier": {
+            "type": "grep",
+            "file": "src/index.mjs",
+            "pattern": "hookPrePush[\\s\\S]*stdin",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-09-AC05",
+          "statement": "documented in the hook section",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "commit being pushed",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-09-AC06",
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-09-AC07",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-09-AC08",
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
+        "If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item."
+      ]
+    },
+    {
+      "id": "PL-10",
+      "title": "Contract scaffold and lint: a hand-written contract cannot carry the shapes that failed",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-03"
+      ],
+      "requirements": [
+        "TB-R06"
+      ],
+      "description": "`proofline contract scaffold --title ... --scope a,b [--kind feature|docs|release]` prints a task with the standard criteria in place (a red-then-green test slot, the suite, scope, pushed) and the default stop rules, for an agent to fill in. `proofline contract validate` gains a lint that refuses, with the task and criterion named: a task without stop_rules; a task without a scope criterion; a criterion whose file, path, test_file or entry lies outside the task's scope; a command wrapped in a double-quoted sh -c or bash -c that contains $ (the verifier runs bash -c itself, so the outer shell expands first); a test_red_green criterion without a test_file. It warns on a grep criterion whose pattern already matches on the base revision (vacuous). brief and steer tolerate a loaded task without stop_rules (issue 15) instead of throwing. Each of the six shapes was found in a real contract on 2026-10-16.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-10-AC01",
+          "statement": "scaffold emits a valid task with the standard criteria and stop rules, and validate accepts it",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/contract_scaffold.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-10-AC02",
+          "statement": "validate refuses each of the five shapes, naming the task and criterion, and accepts a clean contract",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/contract_lint.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-10-AC03",
+          "statement": "a vacuous grep is warned about with the base revision named",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/contract_lint_vacuous.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-10-AC04",
+          "statement": "brief and steer no longer throw on a loaded task without stop_rules",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/brief_no_stop_rules.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-10-AC05",
+          "statement": "scaffold is wired into the CLI",
+          "verifier": {
+            "type": "grep",
+            "file": "bin/proofline.mjs",
+            "pattern": "scaffold",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-10-AC06",
+          "statement": "documented",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "contract scaffold",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-10-AC07",
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-10-AC08",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-10-AC09",
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
+        "If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item."
+      ]
+    },
+    {
+      "id": "PL-11",
+      "title": "Contract merge and requirements coverage: streams of tasks join a contract without replacing it, and every requirement names a task",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-10"
+      ],
+      "requirements": [
+        "TB-R08"
+      ],
+      "description": "Two commands that generalise what a programme did by hand all day. `proofline contract merge <fragment.json>` appends the fragment's tasks to proofline.json (a duplicate id is refused, never overwritten), appends owner_rules that are not already present, maps owner labels through an optional --owners a=b,c=d table, keeps every existing task and byte of formatting, and prints the sha256 of the result so the owner can approve it; nothing in the fragment can remove or alter an existing task. `proofline contract coverage <REQUIREMENTS.md> [--contracts a.json,b.json]` reads requirement ids from lines of the form `- ID: text`, collects the requirements field of every task across the given contracts (default: this one) and prints one line per id with the tasks that cover it or MISSING, exit 1 when any is missing or any task names an unknown id. Both are repository-agnostic: no lane names, requirement prefixes or paths are built in.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-11-AC01",
+          "statement": "merge appends tasks and new owner rules, refuses a duplicate id, keeps existing bytes, prints the sha256",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/contract_merge.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-11-AC02",
+          "statement": "coverage prints covered and MISSING ids across several contracts and exits 1 on a gap or an unknown id",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/contract_coverage.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-11-AC03",
+          "statement": "both commands are wired into the CLI",
+          "verifier": {
+            "type": "grep",
+            "file": "bin/proofline.mjs",
+            "pattern": "contract merge[\\s\\S]*contract coverage|coverage[\\s\\S]*merge",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-11-AC04",
+          "statement": "documented",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "contract merge",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-11-AC05",
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-11-AC06",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-11-AC07",
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
+        "If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item."
+      ]
+    },
+    {
+      "id": "PL-12",
+      "title": "Guided mode: four commands from install to the first gated task, with no hash to copy and no JSON to edit",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-10",
+        "PL-11"
+      ],
+      "requirements": [
+        "TB-R02",
+        "TB-R06"
+      ],
+      "description": "Four commands make the flow in the README one step each, with defaults that cannot be misconfigured. `proofline setup [--agent claude-code|none]` runs init, installs the hooks, creates the owner role key through agentkey (the repository owner's key, generated here, never shipped), sets the approvals directory to .proofline/approvals, connects the agent tool when one is named (the existing connect), and prints the three lines the agent needs; it refuses to finish with a hook missing. `proofline task \"<plain words>\"` scaffolds a task from the words with the standard criteria (PL-10), writes it as a proposal, prints the hash and the one-line next step. `proofline contract approve [<hash>]` shows the proposal as a diff against the current contract and asks y or N; on y it writes the approval, the marker file named by the sha256 of the proposal bytes, and applies the bytes; on N or an empty line nothing applies; nothing else can put rules into force. `proofline watch [TASK]` prints the active task's criteria and their last measured state, refreshing while the agent works, exits 0 once the gate is PASS and non-zero if the gate is still not PASS at the end of its bound. Every refusal prints the exact next command. The README's flow section gains the four commands as the short path beside the manual one.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md",
+          "package.json"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-12-AC01",
+          "statement": "setup in an empty repository, with AGENTKEY_HOME set to a temporary directory and ~/.agentkey never read, leaves the hooks installed, an owner key and the approvals directory configured, prints three lines (the approvals path, whether the hooks are installed, the next command proofline task), and refuses to finish with a hook missing; if package.json gains a dependency it is @optitransfer/agentkey",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/guided_setup.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-12-AC02",
+          "statement": "task writes a proposal from plain words that validate accepts, and prints its hash and next step",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/guided_task.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-12-AC03",
+          "statement": "approve shows the diff against the current contract; the approval is the marker file named by the sha256 of the proposal bytes; on y the bytes apply to proofline.json, on N or an empty line nothing applies; the hooks accept the approved contract and refuse an unapproved one",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/guided_approve.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-12-AC04",
+          "statement": "watch drives one criterion from FAIL to PASS: it shows the FAIL criterion while it fails, refreshes on a bound of a few seconds, exits 0 once the gate is PASS and non-zero if the gate is still not PASS at the end of the bound",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/guided_watch.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-12-AC05",
+          "statement": "the four commands are wired into the CLI, task between setup and approve",
+          "verifier": {
+            "type": "grep",
+            "file": "bin/proofline.mjs",
+            "pattern": "setup[\\s\\S]*task[\\s\\S]*approve[\\s\\S]*watch",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-12-AC06",
+          "statement": "the README flow names the short path with all four commands in order",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "proofline setup[\\s\\S]*proofline task[\\s\\S]*proofline contract approve[\\s\\S]*proofline watch",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-12-AC07",
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-12-AC08",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-12-AC09",
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
+        "If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item."
+      ]
+    },
+    {
+      "id": "PL-13",
+      "title": "An active task ends when it lands; the hook gates the task of the commit being pushed",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [],
+      "requirements": [
+        "TB-R02"
+      ],
+      "description": "Finding of 2026-10-16: .proofline/active kept naming a task after that task's commits were on main, so the pre-push hook gated the finished task against every later branch (its scope criterion failed on the later task's files) and refused pushes that had nothing to do with it. Fix: `next`, `verify` and the hooks treat an active task as ended once its head is an ancestor of origin/main (or its pushed criterion has a PASS record), clear the file and say so; the hook derives the task to gate from the commits being pushed ((TASK-ID) subject suffix or the Proofline-Task trailer) and falls back to the active task only for a commit that names none; a landed task is never gated. The README's hook section states which task a push is gated on.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-13-AC01",
+          "statement": "an active task whose head is an ancestor of origin/main, or whose pushed criterion has a PASS record, is treated as ended by next, verify and the hooks: the file is cleared and reported as landed, and a later push is gated on the task its commits name",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/active_task_lands.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-13-AC02",
+          "statement": "a commit that names no task is gated on the active task, and a push with no active task and no named task is refused with the next command printed",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/hook_task_from_commit.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-13-AC03",
+          "statement": "the hook section says which task a push is gated on",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "gated on the task",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-13-AC04",
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-13-AC05",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-13-AC06",
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
+        "If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item."
+      ]
     }
   ],
   "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. PL-SELF stays: proofline verifies itself with its own contract.",
