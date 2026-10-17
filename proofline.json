@@ -97,7 +97,7 @@
         {
           "id": "PL-SELF-AC01",
           "mandatory": true,
-          "statement": "Own test suite green: ≥ 38 tests, none skipped, none hung",
+          "statement": "Own test suite green: \u2265 38 tests, none skipped, none hung",
           "verifier": {
             "type": "command",
             "cmd": "node --test",
@@ -381,7 +381,7 @@
         "RF-04",
         "RF-05"
       ],
-      "description": "External dependency: @optitransfer/agentkey@next on npm (AK-02); if absent report BLOCKED. Export buildReceipt(opts) from src/receipt.mjs and call it from bin/proofline.mjs. New command `proofline receipt <TASK> [--role <role>] [--base <sha>] [--out <path>]`. Runs verify for the task and builds the predicate https://proofline.dev/receipt/v1 with the fields (level, producer, base, task, tests{changed, red_on_base{ran,failed,output_sha256}, green_on_head{ran,passed,output_sha256}}, suite{command,exit,count,duration_ms}, metrics[], scope{allowed,changed,pass}, forbidden{findings,pass}, claims{reported,reconciled}, agent{role,kid,run_id,model?,trace?}, memory?, timestamps). Subject: {name: \"git+<remote url>@<ref>\", digest:{gitCommit, gitTree}}. Signs with agentkey signDSSE for the role (default PROOFLINE_AGENT_ROLE, else level L0 unsigned). Writes .proofline/receipts/<sha7>.json (the envelope); init already ignores .proofline/ (src/index.mjs:24), and `proofline init --keep-receipts` adds the negation `!.proofline/receipts/` for teams that commit them. Subject name: \"git+<remote url>@<ref>\" for public repositories, \"<ref>\" with the repository only in predicate.repository for private ones. Subject binding rules every verifier applies: subject.gitCommit must equal the head being judged and predicate.base.gitCommit the base; a tree-only match marks base-relative fields (red_on_base, scope) unverified unless recomputed. tests.red_on_base and green_on_head carry attempts; suite carries reruns. Red means exit != 0 on base (a module-not-found counts), stated in docs. schema/receipt-v1.json is a JSON Schema (draft 2020-12) for the predicate; the command validates against it before signing. Every boolean has a sibling `ran`.",
+      "description": "External dependency: @optitransfer/agentkey on npm (0.1.0 under latest since 2026-10-16); if absent report BLOCKED. The dependency is the scoped name, pinned exactly; the unscoped npm name agentkey belongs to a third party and never appears in package.json or in an import. agentkey is loaded where a receipt is signed, so a missing key or a load failure yields an L0 receipt with the reason, never a crash. Export buildReceipt(opts) from src/receipt.mjs and call it from bin/proofline.mjs. New command `proofline receipt <TASK> [--role <role>] [--base <sha>] [--out <path>]`. Runs verify for the task and builds the predicate https://proofline.dev/receipt/v1 with the fields (level, producer, base, task, tests{changed, red_on_base{ran,failed,output_sha256}, green_on_head{ran,passed,output_sha256}}, suite{command,exit,count,duration_ms}, metrics[], scope{allowed,changed,pass}, forbidden{findings,pass}, claims{reported,reconciled}, agent{role,kid,run_id,model?,trace?}, memory?, timestamps). Subject: {name: \"git+<remote url>@<ref>\", digest:{gitCommit, gitTree}}. Signs with agentkey signDSSE for the role (default PROOFLINE_AGENT_ROLE, else level L0 unsigned). Writes .proofline/receipts/<sha7>.json (the envelope); init already ignores .proofline/ (src/index.mjs:24), and `proofline init --keep-receipts` adds the negation `!.proofline/receipts/` for teams that commit them. Subject name: \"git+<remote url>@<ref>\" for public repositories, \"<ref>\" with the repository only in predicate.repository for private ones. Subject binding rules every verifier applies: subject.gitCommit must equal the head being judged and predicate.base.gitCommit the base; a tree-only match marks base-relative fields (red_on_base, scope) unverified unless recomputed. tests.red_on_base and green_on_head carry attempts; suite carries reruns. Red means exit != 0 on base (a module-not-found counts), stated in docs. schema/receipt-v1.json is a JSON Schema (draft 2020-12) for the predicate; the command validates against it before signing. Every boolean has a sibling `ran`.",
       "scope": {
         "allow": [
           "src/**",
@@ -398,7 +398,7 @@
         {
           "id": "PL-02-AC01",
           "mandatory": true,
-          "statement": "a fixture task yields a receipt whose predicate validates against schema/receipt-v1.json and whose envelope verifies with agentkey; red_on_base, green_on_head, suite, scope, forbidden, claims populated",
+          "statement": "a fixture task yields a receipt whose predicate validates against schema/receipt-v1.json and whose envelope verifies with agentkey; red_on_base, green_on_head, suite, scope, forbidden, claims populated; with an empty AGENTKEY_HOME and no role set (agentkey installed, no key) the receipt is L0 unsigned, the exit code unchanged and the reason on stderr, so proofline runs on its own",
           "verifier": {
             "type": "test_red_green",
             "test_file": "test/receipt.test.mjs",
@@ -428,12 +428,12 @@
         {
           "id": "PL-02-AC04",
           "mandatory": true,
-          "statement": "agentkey is a dependency",
+          "statement": "@optitransfer/agentkey is a dependency pinned exactly; the unscoped npm name agentkey (a third party's package, measured 2026-10-16) appears in no dependency field and in no npm: alias",
           "verifier": {
             "type": "command",
-            "cmd": "node -e \"const p=require('./package.json');process.exit((p.dependencies||{}).agentkey?0:1)\"",
+            "cmd": "node -e \"const p=require('./package.json');const d=p.dependencies||{};const all=Object.assign({},p.devDependencies,p.peerDependencies,p.optionalDependencies,d);const bad=Object.entries(all).some(([k,v])=>k==='agentkey'||/^npm:agentkey(@|$)/.test(String(v)));process.exit(/^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.]+)?$/.test(d['@optitransfer/agentkey']||'')&&!bad?0:1)\"",
             "expect_exit": 0,
-            "timeout_s": 1800
+            "timeout_s": 60
           }
         },
         {
@@ -444,6 +444,17 @@
             "type": "wiring",
             "symbol": "buildReceipt",
             "entry": "bin/proofline.mjs"
+          }
+        },
+        {
+          "id": "PL-02-AC09",
+          "mandatory": true,
+          "statement": "no source file imports the unscoped name agentkey",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c \"! grep -rnE \\\"(from|import\\\\() *['\\\\\\\"]agentkey['\\\\\\\"/]|require\\\\(['\\\\\\\"]agentkey['\\\\\\\"/]\\\" src bin\"",
+            "expect_exit": 0,
+            "timeout_s": 60
           }
         },
         {
@@ -685,7 +696,7 @@
         "HV-R04",
         "ZR-07"
       ],
-      "description": "If HIVEVAULT_URL (default http://127.0.0.1:7788) answers GET /v1/state/digest with the token in HIVEVAULT_TOKEN within 2 s, the L1 receipt and the vault note get memory:{vault_digest, frontier}; an L2 receipt (mode ci) carries only memory_commitment = sha256(vault_id || digest || JSON(frontier)) so replica ids never reach a public Check Run; otherwise the field is absent and exit code is unchanged. The digest route already returns {digest, ops_digest, notes, ops, frontier, pairs} (hivevault server/src/digest.mjs:38); vault_digest = digest. `--vault` (or PROOFLINE_VAULT=1) also writes the receipt note to work/receipts/<YYYY-MM-DD>-<role>-<sha7>.md through the vault HTTP write route with origin \"proofline\", frontmatter (kind: proof-receipt, level, subject, agent, predicate_type, summary, envelope_sha256), body = summary table + fenced json envelope. The test starts a throwaway hivevault daemon from the hivevault npm package (devDependency, pinned).",
+      "description": "If HIVEVAULT_URL (default http://127.0.0.1:7788) answers GET /v1/state/digest with the token in HIVEVAULT_TOKEN within 2 s, the L1 receipt and the vault note get memory:{vault_digest, frontier}; an L2 receipt (mode ci) carries only memory_commitment = sha256(vault_id || digest || JSON(frontier)) so replica ids never reach a public Check Run; otherwise the field is absent and exit code is unchanged. The digest route already returns {digest, ops_digest, notes, ops, frontier, pairs} (hivevault server/src/digest.mjs:38); vault_digest = digest. `--vault` (or PROOFLINE_VAULT=1) also writes the receipt note through the vault HTTP write route with origin \"proofline\". The note's format belongs to hivevault (task HV-02 there); proofline's writer for it is PL-16, which supersedes the flat frontmatter this task first wrote. The test's throwaway daemon comes from the pinned hivevault devDependency, which covers the write route and the ?raw=1 read-back only: it has no receipt verifier, so format acceptance is PL-16's fixture and the programme's round trip (PG-RT). The test starts a throwaway hivevault daemon from the hivevault npm package (devDependency, pinned).",
       "scope": {
         "allow": [
           "src/**",
@@ -2120,6 +2131,265 @@
       "stop_rules": [
         "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
         "If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item."
+      ]
+    },
+    {
+      "id": "PL-16",
+      "title": "Receipt note in hivevault's format, sent raw",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-02",
+        "PL-05"
+      ],
+      "requirements": [
+        "PL-R05",
+        "HV-R01",
+        "HV-R04",
+        "ZR-07"
+      ],
+      "scope": {
+        "allow": [
+          "src/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "description": "Finding of 2026-10-16 (proofline issue 37; programme round trip I4 and I7): hivevault refuses the note proofline writes, written directly and through a live daemon. The format belongs to hivevault: HV-02 at hivevault 7602907f4449e76a04fc611d4b6c33cd56af9c9f, implemented by its cli/receipts.mjs receiptNote. This task does not restate that format; it reproduces it. The fixture is the spec: test/fixtures/hivevault-receipt-note.md and test/fixtures/hivevault-receipt-note.inputs.json, made by hivevault's own receiptNote and handed over by the lead, the inputs file naming `from` (the hivevault path and commit) and the sha256 of cli/receipts.mjs at that commit. src/vault.mjs receiptNote reproduces the fixture byte for byte from its inputs. What proofline computes itself: the path uses the head commit's first seven hex characters; agent.kid equals envelope.signatures[0].keyid; subject.pr is 0 for a local run with no pull request; an L0 receipt gets no note (hivevault refuses an unsigned envelope) and the writer says so on stderr. writeReceiptNote sends {raw, origin, commit_message} on PUT /v1/notes/<path>, never a frontmatter object (stored one line per key, measured: subject: [object Object]). No run-time import of hivevault. test/vault_link.test.mjs is the one existing test whose expectations change, by this task: its note assertions move to this format and the stored note is read back with ?raw=1 and compared byte for byte with what was sent. A fixture refresh is a lead handover naming the new hivevault commit and sha256, never proofline's own edit.",
+      "criteria": [
+        {
+          "id": "PL-16-AC01",
+          "mandatory": true,
+          "statement": "for the fixture's inputs the note is byte-identical to the fixture (sha256 held in the test); the path uses the head's sha7; agent.kid equals the envelope's keyid; an L0 receipt yields no note; the PUT body carries raw and no frontmatter object",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/receipt_note_format.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-16-AC02",
+          "mandatory": true,
+          "statement": "the fixture from hivevault's writer is committed",
+          "verifier": {
+            "type": "file_exists",
+            "path": "test/fixtures/hivevault-receipt-note.md"
+          }
+        },
+        {
+          "id": "PL-16-AC03",
+          "mandatory": true,
+          "statement": "the writer no longer sends the frontmatter as an object",
+          "verifier": {
+            "type": "grep",
+            "file": "src/vault.mjs",
+            "pattern": "frontmatter: note\\.frontmatter",
+            "must": "absent"
+          }
+        },
+        {
+          "id": "PL-16-AC04",
+          "mandatory": true,
+          "statement": "hivevault is not imported at run time",
+          "verifier": {
+            "type": "grep",
+            "file": "src/vault.mjs",
+            "pattern": "from ['\"]hivevault",
+            "must": "absent"
+          }
+        },
+        {
+          "id": "PL-16-AC05",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-16-AC06",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-16-AC07",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If hivevault's note cannot be reproduced byte for byte without importing hivevault at run time, or the fixture disagrees with hivevault's HV-02 text: STOP and report both on the bus; the fixture is never edited to match proofline's output."
+      ]
+    },
+    {
+      "id": "PL-17",
+      "title": "The gate's verdict depends only on the pushed commit",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-18"
+      ],
+      "requirements": [
+        "TB-R02"
+      ],
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "schema/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "description": "Findings of 2026-10-16 (proofline issue 36; hivevault-programme issue 1; the programme solver run, code read on main fe670fb): the pre-push gate is refused for its environment and reads seat-local state. Measured: agentkey 0c30640's sigstore tests fail in the hook's bare worktree under the system temp directory (exit 1, three module-not-found lines) and pass in the same worktree after an install (exit 0). Read in the code: the push worktree and the red-green base worktree get nothing installed (src/index.mjs:326, src/checks.mjs:143), and on the base a missing third-party module reads as red; gateAtCommit takes the base from the seat's own log (index.mjs:320) and the hook reads the working-tree contract (360), falls back to the active file (370) and accepts an untasked push when the log is empty (380-381); approvals are looked up in the temporary worktree, which has no config, so an owner-approved weakening is refused at push (engine.mjs:134); commands inherit the seat's PATH, HOME and TMPDIR. The invariant this task makes true: a push's verdict is a function of (judge commit, pushed commit, base, the contract bytes at the pushed commit, the dependency closure key, node and git versions) and nothing else. 1. Dependencies from the commit: the closure key is sha256 of `git show <sha>:package-lock.json` plus the node version; the closure is built once with `npm ci --ignore-scripts --prefer-offline --no-audit --no-fund` in a staging directory holding only that commit's package.json and package-lock.json, renamed into a shared store (the path comes from the judge configuration, default ~/.proofline/closures), its node_modules made read-only; a second seat reuses it after checking the key. A commit with dependencies and no lockfile is BLOCKED with the command that makes one; a commit with no dependencies gets an empty closure; a network or install failure is BLOCKED, never red. 2. Worktrees under the closure: the push worktree and the red-green base worktree are created under <closure>/w, so node's ancestor lookup finds <closure>/node_modules and nothing is installed inside a worktree; the base worktree uses the head's closure; a bare-specifier module-not-found in the red run is status error, never red. Commands get a fresh TMPDIR outside the closure. 3. Hook mode reads nothing seat-local: contract and task ids come from <sha>:proofline.json; the base is the task's contract base, else a Proofline-Base trailer that is an ancestor, else <sha>^, never the seat's log; no active-file fallback; an untasked push follows defaults.untasked_push (\"allow\", today's behaviour and the default, or \"refuse\"); approvals come from the judge configuration's approvals directory. 4. Fixed environment for every command: PATH starts with the directory of the node running proofline, then /usr/local/bin:/usr/bin:/bin; a scratch HOME; LANG=C. 5. Every gate verdict writes a receipt of its inputs (the tuple above plus the decision and the failing test names). 6. Optional gate lock (PROOFLINE_GATE_LOCK=<file>): before any command the hook takes the file exclusively and releases it on exit; if it is held, the hook proceeds only when the holder's token equals PROOFLINE_GATE_TOKEN, else refuses at once and never waits. proofline itself knows nothing of any machine's queue.",
+      "criteria": [
+        {
+          "id": "PL-17-AC01",
+          "mandatory": true,
+          "statement": "fixture repositories with committed lockfiles and offline file: dependencies: a clean clone's push passes; two clones with different .proofline logs, PATH and HOME give byte-identical input receipts for one commit; a change that adds a dependency reads red on base for behaviour, with no module-not-found counted as red; an owner-approved weakening passes under the hook; dependencies without a lockfile are BLOCKED naming the command; a held gate lock refuses at once",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/gate_closure.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-17-AC02",
+          "mandatory": true,
+          "statement": "the push worktree is no longer made under the system temp directory",
+          "verifier": {
+            "type": "grep",
+            "file": "src/index.mjs",
+            "pattern": "os\\.tmpdir\\(\\)",
+            "must": "absent"
+          }
+        },
+        {
+          "id": "PL-17-AC03",
+          "mandatory": true,
+          "statement": "the hook no longer takes its base from the seat's log",
+          "verifier": {
+            "type": "grep",
+            "file": "src/index.mjs",
+            "pattern": "latestStart\\(root, id\\)",
+            "must": "absent"
+          }
+        },
+        {
+          "id": "PL-17-AC04",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-17-AC05",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-17-AC06",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If a suite cannot resolve its packages through the closure without installing into the worktree or reading the builder's checkout: STOP and report the file and the mechanism; the worktree stays separate."
+      ]
+    },
+    {
+      "id": "PL-18",
+      "title": "proofline commits its lockfile",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [],
+      "requirements": [
+        "TB-R02"
+      ],
+      "scope": {
+        "allow": [
+          "package-lock.json",
+          "CHANGELOG.md"
+        ]
+      },
+      "description": "Owner decision of 2026-10-16 (23:05Z): agentkey, hivevault and proofline commit package-lock.json, so a gate builds each commit's dependencies from the commit itself (PL-17). The lockfile is made with `npm install --package-lock-only --ignore-scripts` (lockfileVersion 3) and committed alone with a changelog line. npm never publishes a package's package-lock.json, so nothing changes for anyone installing @optitransfer/proofline.",
+      "criteria": [
+        {
+          "id": "PL-18-AC01",
+          "mandatory": true,
+          "statement": "the lockfile is committed",
+          "verifier": {
+            "type": "file_exists",
+            "path": "package-lock.json"
+          }
+        },
+        {
+          "id": "PL-18-AC02",
+          "mandatory": true,
+          "statement": "it is lockfile version 3 and installs cleanly",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c \"node -e \\\"process.exit(require('./package-lock.json').lockfileVersion===3?0:1)\\\" && npm ci --ignore-scripts --no-audit --no-fund\"",
+            "expect_exit": 0,
+            "timeout_s": 900
+          }
+        },
+        {
+          "id": "PL-18-AC03",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-18-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-18-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
       ]
     }
   ],
