@@ -3683,29 +3683,7 @@
       ]
     }
   ],
-  "notes": [
-    "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. PL-SELF stays: proofline verifies itself with its own contract.",
-    "|",
-    "2",
-    "0",
-    "2",
-    "6",
-    "1",
-    "0",
-    "1",
-    "7",
-    "1",
-    "5",
-    "(",
-    "V",
-    "R",
-    "A",
-    "G",
-    "g",
-    ")",
-    ",",
-    "G"
-  ],
+  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. PL-SELF stays: proofline verifies itself with its own contract. | 2026-10-17: 15 review tasks appended (COVERAGE.md maps every finding and open issue). Scope criterion added to PL-SELF, DG-PL so the contract passes its own validator.",
   "ci": {
     "tasks": [
       "PL-SELF"
