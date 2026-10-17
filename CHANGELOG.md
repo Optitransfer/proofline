@@ -5,6 +5,7 @@ All notable project changes are recorded here. Dates use ISO 8601 (`YYYY-MM-DD`)
 ## [Unreleased]
 
 ### Added
+- The repository commits package-lock.json at lockfile version 3, made with npm install --package-lock-only --ignore-scripts, so a gate can install this revision from the revision itself.
 - `verify` and `gate` stay on the host unless `--isolated` is passed. That mode runs command, red-green and metric checks with no network, a fresh HOME, and the repository read-only except paths the check declares. The image digest is `env.image` on the contract under test. Without it, `--isolated` refuses and names `env.image`. The receipt records `isolated`, `env_digest` and `heuristic`. grep, wiring and the forbidden scan are one layer, not a boundary.
 - Every subcommand refuses a flag it does not accept, exits 2, and names the unknown flag and the accepted ones. Nothing runs after that refusal (#33).
 - The pre-push hook leaves out a commit already on the server default branch. It reads that head with `git ls-remote` of the push URL at send time, for an existing branch and for a new branch. A local remote-tracking ref does not count. If the server cannot be read, every commit in the range is gated (#31, #35).
