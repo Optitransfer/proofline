@@ -3681,9 +3681,160 @@
         "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
         "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
       ]
+    },
+    {
+      "id": "PL-SETUP01",
+      "title": "proofline setup pins the owner key it creates",
+      "phase": "implement",
+      "owner": "lane-a",
+      "depends_on": [],
+      "requirements": [
+        "TB-R02"
+      ],
+      "scope": {
+        "allow": [
+          "src/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "description": "setup runs agentkey init owner in AGENTKEY_HOME (src/guided.mjs:51-62) but never writes guard/owner.pub, the only key verifyContractSignature reads (src/signature.mjs:44), so contract sign makes a signature that nothing verifies until the pin is copied by hand. Found on 2026-10-17 in the truedone OPS-04, where AGENTKEY_HOME/keys/owner.pub had to be copied into guard/. After the key is created, setup writes guard/owner.pub from AGENTKEY_HOME/keys/owner.pub; when guard/owner.pub already holds the same bytes it is left alone; when it holds other bytes setup refuses before writing anything, naming both paths, because replacing a pinned owner key silently would move the trust boundary. setup's printed lines stay as they are.",
+      "criteria": [
+        {
+          "id": "PL-SETUP01-AC01",
+          "mandatory": true,
+          "statement": "setup writes guard/owner.pub from the key it created, leaves a matching pin alone and refuses a different one",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/setup_pins_owner_key.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-SETUP01-AC02",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-SETUP01-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-SETUP01-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-NEXT1",
+      "title": "Version 0.2.0-next.1, so an npm version carries the proofline command",
+      "phase": "release",
+      "owner": "lane-a",
+      "depends_on": [
+        "PL-SETUP01"
+      ],
+      "requirements": [
+        "PL-R01",
+        "TB-R07"
+      ],
+      "scope": {
+        "allow": [
+          "package.json",
+          "package-lock.json",
+          "CHANGELOG.md"
+        ]
+      },
+      "description": "npm's @optitransfer/proofline@0.2.0-next.0 (latest and next) has no bin (npm view @optitransfer/proofline bin is empty, measured 2026-10-17), while main's package.json declares bin proofline -> bin/proofline.mjs; a published version cannot be replaced. truedone SEC-01 runs the pinned proofline in CI and is BLOCKED on it. The version moves to 0.2.0-next.1 in package.json and package-lock.json (npm install --package-lock-only --ignore-scripts, empty user config), with a CHANGELOG heading \"## 0.2.0-next.1 (2026-10-17)\" over the Unreleased entries. The owner publishes it from his terminal from the landed commit (npm login --auth-type=web; npm publish --access public --tag next --auth-type=web), and the lead records the registry's bin.",
+      "criteria": [
+        {
+          "id": "PL-NEXT1-AC01",
+          "mandatory": true,
+          "statement": "package.json says 0.2.0-next.1",
+          "verifier": {
+            "type": "grep",
+            "file": "package.json",
+            "pattern": "\"version\":\\s*\"0\\.2\\.0-next\\.1\"",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-NEXT1-AC02",
+          "mandatory": true,
+          "statement": "the changelog dates 0.2.0-next.1",
+          "verifier": {
+            "type": "grep",
+            "file": "CHANGELOG.md",
+            "pattern": "^## 0\\.2\\.0-next\\.1 \\(2026-10-1[0-9]\\)$",
+            "must": "present",
+            "flags": "m"
+          }
+        },
+        {
+          "id": "PL-NEXT1-AC03",
+          "mandatory": true,
+          "statement": "the packed tarball holds bin/proofline.mjs and the manifest names it as the proofline command",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c \"npm pack --dry-run --json --ignore-scripts > /tmp/pl-pack.json && node -e \\\"const p=require('/tmp/pl-pack.json')[0];process.exit(p.version==='0.2.0-next.1'&&p.files.some(f=>f.path==='bin/proofline.mjs')&&require('./package.json').bin.proofline==='bin/proofline.mjs'?0:1)\\\"\"",
+            "expect_exit": 0,
+            "timeout_s": 300
+          }
+        },
+        {
+          "id": "PL-NEXT1-AC04",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-NEXT1-AC05",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-NEXT1-AC06",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
     }
   ],
-  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. PL-SELF stays: proofline verifies itself with its own contract. | 2026-10-17: 15 review tasks appended (COVERAGE.md maps every finding and open issue). Scope criterion added to PL-SELF, DG-PL so the contract passes its own validator.",
+  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. PL-SELF stays: proofline verifies itself with its own contract. | 2026-10-17: 15 review tasks appended (COVERAGE.md maps every finding and open issue). Scope criterion added to PL-SELF, DG-PL so the contract passes its own validator. | 2026-10-17: PL-SETUP01 (setup pins the owner key) and PL-NEXT1 (0.2.0-next.1 carries the bin) appended.",
   "ci": {
     "tasks": [
       "PL-SELF"
