@@ -1,6 +1,6 @@
 {
   "name": "@optitransfer/proofline",
-  "version": "0.2.0-next.0",
+  "version": "0.2.0-next.1",
   "description": "Independent V&V for coding agents. The agent says done; Proofline re-runs every check against a contract, rejects claims the evidence does not support, and gates the push.",
   "keywords": [
     "ai-agents",

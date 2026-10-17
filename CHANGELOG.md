@@ -2,7 +2,7 @@
 
 All notable project changes are recorded here. Dates use ISO 8601 (`YYYY-MM-DD`).
 
-## [Unreleased]
+## 0.2.0-next.1 (2026-10-17)
 
 ### Added
 - A contract whose canonical bytes differ from its base is refused at pre-commit, verify, and gate unless the approval marker names the new bytes. The field-level weakening list stays the explanation, and a tightening is still not a weakening.
