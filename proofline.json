@@ -97,7 +97,7 @@
         {
           "id": "PL-SELF-AC01",
           "mandatory": true,
-          "statement": "Own test suite green: \u2265 38 tests, none skipped, none hung",
+          "statement": "Own test suite green: ≥ 38 tests, none skipped, none hung",
           "verifier": {
             "type": "command",
             "cmd": "node --test",
@@ -152,6 +152,14 @@
             "file": "src/index.mjs",
             "pattern": "process\\.env\\.(PROOFLINE|SKIP)",
             "must": "absent"
+          }
+        },
+        {
+          "id": "PL-SELF-AC-SCOPE",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
           }
         },
         {
@@ -317,7 +325,7 @@
           "statement": "@optitransfer/proofline@next published",
           "verifier": {
             "type": "command",
-            "cmd": "sh -c \"npm view @optitransfer/proofline@next version | grep -q 0.2.0-next\"",
+            "cmd": "sh -c 'npm view @optitransfer/proofline@next version | grep -q 0.2.0-next'",
             "expect_exit": 0,
             "timeout_s": 1800
           }
@@ -1169,6 +1177,14 @@
             "file": "docs/diagrams/proofline-receipt-flow.svg",
             "pattern": "L2",
             "must": "present"
+          }
+        },
+        {
+          "id": "DG-PL-AC-SCOPE",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
           }
         },
         {
@@ -2242,7 +2258,8 @@
         "PL-18"
       ],
       "requirements": [
-        "TB-R02"
+        "TB-R02",
+        "RVI-PL-ISS-36"
       ],
       "scope": {
         "allow": [
@@ -2391,9 +2408,1304 @@
         "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
         "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
       ]
+    },
+    {
+      "id": "PL-RV01",
+      "title": "Any change to the contract is a change: whole-contract hash, not a field list",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [],
+      "requirements": [
+        "RV-PL1",
+        "RVI-PL-F01"
+      ],
+      "description": "Review Critical C1. Replace the field list in src/contract.mjs:233-257 with: canonical JSON of proofline.json at base vs HEAD; any difference is a contract change, refused at pre-commit, verify, gate and gate --ci unless the new canonical hash carries a valid owner signature (PL-RV02). Keep the field-level diff only as the explanation printed. Tests reproduce every field the review changed: min_tests, grep pattern, scope.allow, forbidden.ignore_paths, protected_values, ci.tasks, expect_exit, test_file, env, timeout_s.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV01-AC01",
+          "mandatory": true,
+          "statement": "each of the ten field edits from the review is refused by pre-commit, verify, gate and gate --ci",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/contract_any_change.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-RV01-AC02",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV01-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV01-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV02",
+      "title": "Approvals are owner signatures, armed from the base, never a file the agent can write",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-RV01"
+      ],
+      "requirements": [
+        "RV-PL2",
+        "RVI-PL-F02",
+        "RVI-PL-F11"
+      ],
+      "description": "Review Critical C2 and High H6. Remove the approvals-directory path from .proofline/config.json and from setup. An approval is a detached agentkey or ssh-keygen -Y signature over the canonical contract hash by the key pinned in guard/owner.pub AS IT EXISTS AT THE BASE REVISION (read with git show <base>:guard/owner.pub). Removing or changing guard/owner.pub is itself a contract change needing a signature from the base key. A repository with a contract and no guard/owner.pub at base runs in \"unarmed\" mode, printed on every command and recorded in every report as armed:false. This task does not arm proofline's own repository and commits no key or signature; arming it is the owner's step.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV02-AC01",
+          "mandatory": true,
+          "statement": "a touched approvals file, a config pointing approvals elsewhere, and a deleted owner.pub each fail to approve a weakened contract",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/approval_is_signature.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-RV02-AC02",
+          "mandatory": true,
+          "statement": "a fixture with guard/owner.pub at its base records armed true, and a fixture without it records armed false",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/approval_is_signature.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-RV02-AC03",
+          "mandatory": true,
+          "statement": "no approvals directory setting remains",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c '! grep -rn '\\''approvals'\\'' src/util.mjs src/guided.mjs'",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV02-AC04",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV02-AC05",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV02-AC06",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV03",
+      "title": "The base comes from the protected remote, never from the agent",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [],
+      "requirements": [
+        "RV-PL3",
+        "RVI-PL-F03"
+      ],
+      "description": "Review Critical C3. Base = merge-base of HEAD with the remote default branch read through git ls-remote (not the local tracking ref), or the CI event base SHA under --ci. --base, next --base and the Proofline-Base trailer are removed or accepted only when they equal that computed base. A base with no reachable remote is BLOCKED, not PASS.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV03-AC01",
+          "mandatory": true,
+          "statement": "the trailer, --base and next --base cannot move the base; an unreachable remote yields BLOCKED",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/base_from_remote.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-RV03-AC02",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV03-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV03-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV04",
+      "title": "Missing or truncated evidence refuses the push; nothing exits 0 without running the checks",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-RV03"
+      ],
+      "requirements": [
+        "RV-PL4",
+        "RVI-PL-F04",
+        "RVI-PL-F09"
+      ],
+      "description": "Review Critical C4 and High H4. Pre-push: a contract with no log, an empty log, or a log whose head is behind the anchored head (PL-RV07) refuses the push. Remove the \"landed\" short-circuit from gate and verify (index.mjs:146,164; bin/proofline.mjs:204): landed is decided only by ls-remote plus a hash-checked log entry, and even then the checks are re-run or the reused result is cited by its log hash.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV04-AC01",
+          "mandatory": true,
+          "statement": "rm -rf .proofline then push is refused; a hand-written pushed:pass report and a forged local origin/main ref both lead to the checks running",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/no_free_pass.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-RV04-AC02",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV04-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV04-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV05",
+      "title": "CI gates every task from the base contract",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-RV01"
+      ],
+      "requirements": [
+        "RV-PL5",
+        "RVI-PL-F05",
+        "RVI-PL-F18"
+      ],
+      "description": "Review Critical C5. gate --ci reads ci.tasks from the base revision's contract (git show <base>:proofline.json), refuses an empty list, and also gates every task whose commits appear in the pushed range. The CI workflow template passes the event base SHA.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV05-AC01",
+          "mandatory": true,
+          "statement": "ci.tasks emptied in the head contract still gates the base list; an empty base list fails",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/ci_from_base.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-RV05-AC02",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV05-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV05-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV06",
+      "title": "Verifiers run with a clean environment; red means the named test failed on an assertion",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [],
+      "requirements": [
+        "RV-PL6",
+        "RVI-PL-F06",
+        "RVI-PL-F07",
+        "RVI-PL-F08",
+        "RVI-PL-ISS-18"
+      ],
+      "description": "Review High H2 and H3. run() uses an allowlisted environment (PATH, HOME as a temp dir, LANG, TZ, CI, plus the contract's explicit env) and records it in the report; NODE_OPTIONS, GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_PREFIX and GIT_COMMON_DIR are dropped (closes #18). test_red_green parses TAP from node --test (and the JUnit file for other runners): red requires the named test to report not ok on an assertion, not a load, import, syntax or path error; the base run happens in a directory whose path does not differ in a detectable way (same basename) or the path-dependence is reported. Assertion edits in existing tests (H1): any changed assertion line in a test file that existed at base is a forbidden finding unless the task lists that test in allow_assertion_changes.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV06-AC01",
+          "mandatory": true,
+          "statement": "NODE_OPTIONS preload no longer neuters a test; a red caused by a missing import or a path check is not red; an edited assertion is a forbidden finding",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/clean_env_true_red.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-RV06-AC02",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV06-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV06-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV07",
+      "title": "The evidence log is signed and its head anchored outside the repository",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-RV02"
+      ],
+      "requirements": [
+        "RV-PL7",
+        "RVI-PL-F10"
+      ],
+      "description": "Review High H5. Each entry is signed with the agentkey role key of the machine (or the CI key under --ci); the chain head after every gate is written to refs/proofline/head on the remote by the pre-push hook and by CI, and evidence verify compares the local head with ls-remote. A forged entry without a key, a truncated log, or a head behind the remote all report broken.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV07-AC01",
+          "mandatory": true,
+          "statement": "a forged PASS entry, a truncated log and a log behind the remote head are each reported broken",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/evidence_anchor.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-RV07-AC02",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV07-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV07-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV08",
+      "title": "Hardening: test counts from a reporter file, forbidden by AST, scope sees renames and hidden files, MCP proposes, shell quoting",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-RV06"
+      ],
+      "requirements": [
+        "RV-PL8",
+        "RVI-PL-F12",
+        "RVI-PL-F13",
+        "RVI-PL-F14",
+        "RVI-PL-F15",
+        "RVI-PL-F16",
+        "RVI-PL-F17"
+      ],
+      "description": "Review Medium M1-M5 and Low L1. min_tests from a reporter file the verifier creates (node --test-reporter=tap --test-reporter-destination), not stdout. Forbidden: parse JS/TS test files (acorn-free: a small tokenizer is enough) for skip/only/todo in any option form, numeric timeouts in any notation, git option prefixes (--no-verif), computed env names that resolve to a bypass name. Scope: record both sides of a rename; list untracked files with git ls-files --others without exclude rules; .proofline/ changes count. MCP contract_create writes proposals/<sha>.json, never proofline.json. Shell-quote every substituted value. Grep gains code_only: true, which ignores comments.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV08-AC01",
+          "mandatory": true,
+          "statement": "each Medium/Low reproduction from the review now fails",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/hardening_review.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-RV08-AC02",
+          "mandatory": true,
+          "statement": "contract_create never writes proofline.json",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c 'hit=0; for f in src/mcp.mjs src/guided.mjs src/index.mjs; do [ -f \"$f\" ] || continue; grep -n \"writeFileSync([^)]*proofline.json\" \"$f\" && hit=1; done; [ \"$hit\" -eq 0 ]'",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV08-AC03",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV08-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV08-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV09",
+      "title": "The suite passes from a clean checkout",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-18"
+      ],
+      "requirements": [
+        "RV-PL9",
+        "RVI-PL-F20"
+      ],
+      "description": "Review: 2 of 151 tests fail from a clean checkout. test/contract_sig.test.mjs:10 resolves agentkey through the installed package (import.meta.resolve(\"@optitransfer/agentkey/package.json\")), never an absolute path; vault_link gets its dependency through npm ci in pretest or moves to an integration suite run in CI with the dependency installed.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md",
+          "package.json",
+          "package-lock.json",
+          "scripts/**"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV09-AC01",
+          "mandatory": true,
+          "statement": "no absolute home paths in tests",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c '! grep -rn '\\''/Users/'\\'' test'",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV09-AC02",
+          "mandatory": true,
+          "statement": "a fresh clone passes npm ci && npm test",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c 'd=$(mktemp -d) && git clone -q . $d/p && cd $d/p && npm ci -q && npm test'",
+            "expect_exit": 0,
+            "timeout_s": 2400
+          }
+        },
+        {
+          "id": "PL-RV09-AC03",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV09-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV09-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV10",
+      "title": "README states the trust model and the known bypasses",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-RV01",
+        "PL-RV02",
+        "PL-RV03",
+        "PL-RV04",
+        "PL-RV05"
+      ],
+      "requirements": [
+        "RV-PL10",
+        "RVI-PL-F21",
+        "RVI-PL-G03",
+        "RVI-PL-G04"
+      ],
+      "description": "Until PL-RV01..RV07 gate PASS, the README says proofline catches an agent's mistakes and shortcuts and is not a boundary against an agent that is trying; docs/BYPASSES.md lists every review finding with its status and the task that closes it. The MCP section lists all 9 tools. Remove every sentence the review marked false, or make it true first.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV10-AC01",
+          "mandatory": true,
+          "statement": "bypass register present with every review id",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c 'for i in C1 C2 C3 C4 C5 H1 H2 H3 H4 H5 H6 M1 M2 M3 M4 M5 L1; do grep -q \"$i\" docs/BYPASSES.md || exit 1; done'",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV10-AC02",
+          "mandatory": true,
+          "statement": "README lists all MCP tools",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c 'grep -c '\\''verify_receipt'\\'' README.md | grep -qv '\\''^0$'\\'''",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV10-AC03",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV10-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV10-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV11",
+      "title": "proofline init --from-tests: a working contract in one command",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-RV09"
+      ],
+      "requirements": [
+        "RV-PL11",
+        "RVI-PL-F24"
+      ],
+      "description": "Growth. proofline init --from-tests inspects package.json (or pyproject, go.mod, Cargo.toml), writes a proofline.json with one task \"suite stays green\" using the detected test command and min_tests from one measured run, prints the next command, and runs in under 30 s on this repository. The README quickstart becomes three lines: npx, init --from-tests, next.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV11-AC01",
+          "mandatory": true,
+          "statement": "init --from-tests on fixtures for node, python and go writes a contract that validates and whose first verify runs",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/init_from_tests.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-RV11-AC02",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV11-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV11-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV12",
+      "title": "Hooks and pushes: worktrees, landed tasks, uninstalled suites (#20, #23, #25, #36)",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-RV04",
+        "PL-17"
+      ],
+      "requirements": [
+        "RV-PL12",
+        "RVI-PL-ISS-20",
+        "RVI-PL-ISS-23",
+        "RVI-PL-ISS-25"
+      ],
+      "description": "Open issues. #20: init from a linked worktree installs hooks for that worktree only (git rev-parse --git-path hooks per worktree, core.hooksPath untouched) and bakes no absolute worktree path. #23: a push from a worktree with no task evidence is refused when the pushed range touches files under a contract task's scope (with PL-RV04). #25: .proofline/active is cleared when its task lands (ls-remote contains a commit naming the task and a hash-checked PASS exists). #36 is PL-17. This task does not add a second install rule.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV12-AC01",
+          "mandatory": true,
+          "statement": "each of #20, #23, #25 and #36 reproduced in a temp repository now behaves as specified",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/hooks_open_issues.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-RV12-AC02",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV12-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV12-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV13",
+      "title": "Contract and CLI correctness: missing stop_rules, root commits, double-wrapped scope (#15, #17, #19); validate the repository's own contract",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [],
+      "requirements": [
+        "RV-PL13",
+        "RVI-PL-F23",
+        "RVI-PL-ISS-15",
+        "RVI-PL-ISS-17",
+        "RVI-PL-ISS-19"
+      ],
+      "description": "Open issues. #15: brief and next treat a missing stop_rules as [] and validate warns. #17: gate on a root commit, or before a base is known, is BLOCKED (\"no base\"), never PASS on an empty diff. #19: contract create accepts scope as an array or {allow:[...]} and stores {allow:[...]} exactly once; validate refuses a nested allow. The repository's own proofline.json must pass contract validate on main (it failed on 17 Oct: PL-SELF and DG-PL had no scope criterion; fixed in the merged contract) and CI runs contract validate first.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md",
+          ".github/**"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV13-AC01",
+          "mandatory": true,
+          "statement": "#15, #17 and #19 reproductions behave as specified",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/contract_cli_issues.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-RV13-AC02",
+          "mandatory": true,
+          "statement": "the repository contract validates",
+          "verifier": {
+            "type": "command",
+            "cmd": "node bin/proofline.mjs contract validate",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV13-AC03",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV13-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV13-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV14",
+      "title": "Interop and package: receipts hivevault accepts, the scoped agentkey name, the MCP example shipped, report wording (#37, #38)",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-RV09"
+      ],
+      "requirements": [
+        "RV-PL14",
+        "RVI-PL-F19",
+        "RVI-PL-F22",
+        "RVI-PL-ISS-37",
+        "RVI-PL-ISS-38"
+      ],
+      "description": "Open issues and review L3. #37: the receipt note proofline writes verifies with hivevault's receipts verifier; one shared JSON schema (schema/receipt-note-v1.json) is the contract between them and both repositories test against the same fixture. #38: the PL-02 criterion that checks the agentkey dependency reads dependencies[\"@optitransfer/agentkey\"] (owner-signed contract change). examples/mcp-config.json is in the npm package files and README links it. The report no longer prints \"approved, approved\".",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md",
+          "schema/**",
+          "examples/**",
+          "package.json"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV14-AC01",
+          "mandatory": true,
+          "statement": "a receipt note written by proofline verifies against the shared schema fixture",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/receipt_note_schema.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-RV14-AC02",
+          "mandatory": true,
+          "statement": "the MCP example ships in the package",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c 'npm pack --dry-run 2>&1 | grep -q examples/mcp-config.json'",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV14-AC04",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV14-AC05",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV14-AC06",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV15",
+      "title": "Every open issue closed with the task or commit that fixed it",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [
+        "PL-RV01",
+        "PL-RV02",
+        "PL-RV03",
+        "PL-RV04",
+        "PL-RV06",
+        "PL-RV12",
+        "PL-RV13",
+        "PL-RV14"
+      ],
+      "requirements": [
+        "RV-PL15",
+        "RVI-PL-ISS-15",
+        "RVI-PL-ISS-16",
+        "RVI-PL-ISS-17",
+        "RVI-PL-ISS-18",
+        "RVI-PL-ISS-19",
+        "RVI-PL-ISS-20",
+        "RVI-PL-ISS-21",
+        "RVI-PL-ISS-22",
+        "RVI-PL-ISS-23",
+        "RVI-PL-ISS-25",
+        "RVI-PL-ISS-31",
+        "RVI-PL-ISS-33",
+        "RVI-PL-ISS-35",
+        "RVI-PL-ISS-37",
+        "RVI-PL-ISS-38"
+      ],
+      "description": "Issue hygiene. Already fixed on main but still open: #21 (PL-09, d2ee324), #31 (PL-14, cedd01d), #33 (PL-15, 8456773): add a regression test each if none exists, then close citing the commit. Close #16 with PL-RV02, #18 with PL-RV06 (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_PREFIX, GIT_COMMON_DIR dropped from the verifier environment), #22 and #35 with PL-RV03, #23 with PL-RV04 and PL-RV12, and #15 #17 #19 #20 #25 #36 #37 #38 with their tasks. docs/BYPASSES.md (PL-RV10) links each closed issue.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV15-AC01",
+          "mandatory": true,
+          "statement": "no open issue among the sixteen open on 17 Oct",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c 'for n in 15 16 17 18 19 20 21 22 23 25 31 33 35 36 37 38; do s=$(gh api repos/mgillr/proofline/issues/$n --jq .state); [ \"$s\" = closed ] || { echo \"#$n $s\"; exit 1; }; done'",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV15-AC02",
+          "mandatory": true,
+          "statement": "regression tests exist for #21, #31 and #33",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c 'for n in 21 31 33; do grep -rlq \"#$n\" test || exit 1; done'",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV15-AC03",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-RV15-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV15-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV16",
+      "title": "Lead with the catch: the first screen is the promise, the catch recording and one install command; the flowchart moves to the docs",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [],
+      "requirements": [
+        "RV-PL16",
+        "RVI-PL-G01"
+      ],
+      "description": "Review (4), proofline \"how it grows\": \"Lead with the catch. First screen: the one-line promise, then that demo as an animated terminal recording, then npx and one command. The flowchart goes to the docs.\" Red on 17e98e6: README.md:9 is flowchart LR, See it catch is README.md:26, the install line is README.md:71, and the tree has examples/demo/catch.mjs and demo.mjs but no recording. The recording is made from examples/demo/catch.mjs, not staged.",
+      "scope": {
+        "allow": [
+          "README.md",
+          "docs/**"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV16-AC01",
+          "mandatory": true,
+          "statement": "the flowchart is not on the first screen (the first 20 lines of README.md)",
+          "verifier": {
+            "type": "command",
+            "cmd": "awk 'NR<=20 && /flowchart LR/ {f=1} END {exit f}' README.md",
+            "expect_exit": 0,
+            "timeout_s": 60
+          }
+        },
+        {
+          "id": "PL-RV16-AC02",
+          "mandatory": true,
+          "statement": "the catch recording is in the docs",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c '[ -f docs/catch.gif ] || [ -f docs/catch.mp4 ]'",
+            "expect_exit": 0,
+            "timeout_s": 60
+          }
+        },
+        {
+          "id": "PL-RV16-AC03",
+          "mandatory": true,
+          "statement": "the flowchart lives in the docs",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c 'grep -q \"flowchart LR\" docs/flow.md'",
+            "expect_exit": 0,
+            "timeout_s": 60
+          }
+        },
+        {
+          "id": "PL-RV16-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV16-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-RV17",
+      "title": "A Claude Code plugin whose instructions have the agent run proofline next and verify",
+      "phase": "implement",
+      "owner": "lane-c",
+      "depends_on": [],
+      "requirements": [
+        "RV-PL17",
+        "RVI-PL-G02"
+      ],
+      "description": "Review (4), proofline \"how it grows\": \"Ride the agent's own loop. Ship as a Claude Code plugin and an AGENTS.md snippet so the agent itself runs proofline next and verify.\" On 17e98e6 AGENTS.md:7 and :10 already tell the agent to run proofline next and verify, so this task does not rewrite AGENTS.md; no Claude Code plugin is in the tree. The builder confirms the manifest path against the current plugin layout before the contract commit and changes only the path if that layout uses another filename.",
+      "scope": {
+        "allow": [
+          ".claude-plugin/**"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "PL-RV17-AC01",
+          "mandatory": true,
+          "statement": "a Claude Code plugin manifest ships in the repository",
+          "verifier": {
+            "type": "file_exists",
+            "path": ".claude-plugin/plugin.json"
+          }
+        },
+        {
+          "id": "PL-RV17-AC02",
+          "mandatory": true,
+          "statement": "the plugin tells the agent to run proofline next and proofline verify",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c 'grep -q \"proofline next\" .claude-plugin/plugin.json && grep -q \"proofline verify\" .claude-plugin/plugin.json'",
+            "expect_exit": 0,
+            "timeout_s": 60
+          }
+        },
+        {
+          "id": "PL-RV17-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-RV17-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
     }
   ],
-  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. PL-SELF stays: proofline verifies itself with its own contract.",
+  "notes": [
+    "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. PL-SELF stays: proofline verifies itself with its own contract.",
+    "|",
+    "2",
+    "0",
+    "2",
+    "6",
+    "1",
+    "0",
+    "1",
+    "7",
+    "1",
+    "5",
+    "(",
+    "V",
+    "R",
+    "A",
+    "G",
+    "g",
+    ")",
+    ",",
+    "G"
+  ],
   "ci": {
     "tasks": [
       "PL-SELF"
