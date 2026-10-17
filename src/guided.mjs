@@ -61,9 +61,51 @@ function createOwnerKey(env) {
   if (!st || !st.isFile() || st.isSymbolicLink()) throw refuse('the owner key was not created', 'proofline setup');
 }
 
+function ownerPaths(root, env) {
+  return { pub: path.join(env.AGENTKEY_HOME, 'keys', 'owner.pub'), pin: path.resolve(root, 'guard', 'owner.pub') };
+}
+
+/** The pinned bytes, or null when there is no pin. A pin that is not a regular file is refused. */
+function readPin(pin) {
+  let st;
+  try { st = fs.lstatSync(pin); } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    throw refuse(`${pin} cannot be read`, `ls -l ${pin}`);
+  }
+  if (!st.isFile()) throw refuse(`${pin} is not a regular file`, `ls -l ${pin}`);
+  return fs.readFileSync(pin);
+}
+
+const pinMismatch = (pin, pub) => refuse(`${pin} does not hold the owner key at ${pub}, and a pinned owner key is never replaced`, 'AGENTKEY_HOME=<the directory that holds the pinned key> proofline setup');
+
+/** Before anything is written: a pin that is there must hold the key AGENTKEY_HOME already has. */
+function checkOwnerPin(root, env) {
+  const { pub, pin } = ownerPaths(root, env);
+  const have = readPin(pin);
+  if (!have) return;
+  let want = null;
+  try { want = fs.readFileSync(pub); } catch { want = null; }
+  if (!want || !have.equals(want)) throw pinMismatch(pin, pub);
+}
+
+/** guard/owner.pub is the only key verifyContractSignature reads. Written once from the key setup created. */
+function pinOwnerKey(root, env) {
+  const { pub, pin } = ownerPaths(root, env);
+  let want;
+  try { want = fs.readFileSync(pub); } catch { throw refuse(`the owner public key ${pub} was not created`, 'proofline setup'); }
+  const have = readPin(pin);
+  if (have) {
+    if (!have.equals(want)) throw pinMismatch(pin, pub);
+    return;
+  }
+  fs.mkdirSync(path.dirname(pin), { recursive: true });
+  fs.writeFileSync(pin, want, { flag: 'wx', mode: 0o644 });
+}
+
 /**
- * init, hooks, the owner key, approvals at .proofline/approvals.
+ * init, hooks, the owner key, guard/owner.pub from that key, approvals at .proofline/approvals.
  * Prints three lines. Refuses, without those lines, when a hook is missing.
+ * Refuses before init when guard/owner.pub holds a key other than the one in AGENTKEY_HOME.
  */
 export function setup(root, { agent = 'none', env = process.env } = {}) {
   if (agent !== 'none' && agent !== 'claude-code') throw refuse(`unknown agent ${agent}`, 'proofline setup --agent none');
@@ -71,6 +113,7 @@ export function setup(root, { agent = 'none', env = process.env } = {}) {
   const approvals = path.resolve(root, '.proofline', 'approvals');
   if (typeof env.AGENTKEY_HOME !== 'string' || !env.AGENTKEY_HOME.trim()) throw refuse('AGENTKEY_HOME is not set, so no key directory was opened', 'proofline setup');
   if (!agentkeyBin(env)) throw refuse('agentkey is not on PATH', 'proofline setup');
+  checkOwnerPin(root, env);
   try {
     init(root, { hooks: true, approvals });
     installHooks(root);
@@ -79,6 +122,7 @@ export function setup(root, { agent = 'none', env = process.env } = {}) {
   }
   if (!hooksReady(root)) throw refuse('a hook is missing', 'proofline setup');
   createOwnerKey(env);
+  pinOwnerKey(root, env);
   fs.mkdirSync(approvals, { recursive: true });
   if (agent === 'claude-code') {
     const connected = connectClaudeCode();
