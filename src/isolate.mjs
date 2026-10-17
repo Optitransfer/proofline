@@ -2,6 +2,8 @@
 // Off unless the caller passes isolated, or the process was started with --isolated.
 // The image digest lives in the contract under test (a fixture in the TB-06 test), never invented here.
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 const DIGEST = /^node:22\.11\.0@sha256:[0-9a-f]{64}$/;
@@ -48,24 +50,56 @@ function result(cmd, cwd, started, child) {
   };
 }
 
+function bwrapArgs(cmd, cwd, extra, writable) {
+  const args = ['--unshare-net', '--die-with-parent', '--ro-bind', '/', '/', '--tmpfs', '/tmp', '--clearenv', '--setenv', 'HOME', '/tmp', '--setenv', 'PATH', '/usr/local/bin:/usr/bin:/bin'];
+  if (cwd) {
+    args.push('--ro-bind', cwd, '/work', '--chdir', '/work');
+    for (const rel of writable) args.push('--bind', path.resolve(cwd, rel), path.posix.join('/work', rel));
+  } else {
+    args.push('--chdir', '/tmp');
+  }
+  for (const [k, val] of extra) args.push('--setenv', k, String(val));
+  args.push('--', 'sh', '-c', cmd);
+  return args;
+}
+
+function dockerArgs(cmd, cwd, image, extra, writable) {
+  const args = ['run', '--rm', '--network', 'none', '--read-only', '--tmpfs', '/tmp', '-e', 'HOME=/tmp'];
+  if (cwd) {
+    args.push('-v', `${cwd}:/work:ro`, '-w', '/work');
+    for (const rel of writable) args.push('-v', `${path.resolve(cwd, rel)}:/work/${rel}:rw`);
+  }
+  for (const [k, val] of extra) args.push('-e', `${k}=${val}`);
+  args.push('--entrypoint', 'sh', image, '-c', cmd);
+  return args;
+}
+
+/** One copy under the home directory, which a desktop runtime can mount when the work tree is not shared. */
+function stageCopy(cwd) {
+  const parent = path.join(os.homedir(), '.cache', 'proofline-isolate');
+  fs.mkdirSync(parent, { recursive: true });
+  const dest = fs.mkdtempSync(path.join(parent, 'work-'));
+  fs.cpSync(cwd, dest, { recursive: true, dereference: false });
+  return dest;
+}
+
 /** Run cmd with no network, a fresh HOME, and the repo read-only except declared paths. */
 export function runInSandbox(cmd, { cwd, timeoutS = 600, env, image, runtime, writable = [] } = {}) {
   const started = performance.now();
   const extra = Object.entries(env || {}).filter(([k]) => k !== 'NODE_TEST_CONTEXT');
-  let args;
-  let bin = runtime;
-  if (runtime === 'bwrap') {
-    args = ['--unshare-net', '--die-with-parent', '--ro-bind', '/', '/', '--ro-bind', cwd, '/work', '--tmpfs', '/tmp', '--chdir', '/work', '--clearenv', '--setenv', 'HOME', '/tmp', '--setenv', 'PATH', '/usr/local/bin:/usr/bin:/bin'];
-    for (const rel of writable) args.push('--bind', path.resolve(cwd, rel), path.posix.join('/work', rel));
-    for (const [k, val] of extra) args.push('--setenv', k, String(val));
-    args.push('--', 'sh', '-c', cmd);
-  } else {
-    args = ['run', '--rm', '--network', 'none', '--read-only', '--tmpfs', '/tmp', '-e', 'HOME=/tmp', '-v', `${cwd}:/work:ro`, '-w', '/work'];
-    for (const rel of writable) args.push('-v', `${path.resolve(cwd, rel)}:/work/${rel}:rw`);
-    for (const [k, val] of extra) args.push('-e', `${k}=${val}`);
-    args.push('--entrypoint', 'sh', image, '-c', cmd);
+  const argsFor = (dir) => runtime === 'bwrap'
+    ? bwrapArgs(cmd, dir, extra, writable)
+    : dockerArgs(cmd, dir, image, extra, writable);
+  const spawn = (args) => spawnSync(runtime, args, { encoding: 'utf8', timeout: timeoutS * 1000, maxBuffer: 64 << 20 });
+  let child = spawn(argsFor(cwd));
+  if (cwd && runtime !== 'bwrap' && /Mounts denied/.test(child.stderr || '')) {
+    const staged = stageCopy(cwd);
+    try {
+      child = spawn(argsFor(staged));
+    } finally {
+      fs.rmSync(staged, { recursive: true, force: true });
+    }
   }
-  const child = spawnSync(bin, args, { encoding: 'utf8', timeout: timeoutS * 1000, maxBuffer: 64 << 20 });
   return result(cmd, cwd, started, child);
 }
 
@@ -78,11 +112,11 @@ export function resolveIsolation(contract, opts = {}) {
   if (!requested) return { isolated: false, env_digest: null, block: null, sandbox: null };
   const image = imageDigest(contract);
   if (!image) return { isolated: false, env_digest: null, block: 'env.image is required for --isolated', sandbox: null };
-  const cwd = process.cwd();
   const runtime = runtimeName();
   if (!runtime) return { isolated: false, env_digest: null, block: 'no container runtime for --isolated', sandbox: null };
   const sandbox = (cmd, o) => runInSandbox(cmd, { ...o, image, runtime, writable: o.writable || [] });
-  const ver = sandbox('node --version', { cwd, timeoutS: 60 });
+  // The version probe does not need the work tree. Mounting it fails where the desktop runtime cannot see that path.
+  const ver = sandbox('node --version', { timeoutS: 60 });
   const nodeVer = (ver.stdout || '').trim().split('\n')[0] || 'unknown';
   const env_digest = `${image} runtime=${runtime} node=${nodeVer}`;
   return { isolated: true, env_digest, block: null, sandbox };
