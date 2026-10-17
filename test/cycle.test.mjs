@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as P from '../src/index.mjs';
-import { repo, addTask } from './helpers.mjs';
+import { repo, addTask, commitBeforeBase, sh } from './helpers.mjs';
 
 const ok = [{ verifier: { type: 'command', cmd: 'true' } }];
 const bad = [{ verifier: { type: 'command', cmd: 'false' } }];
@@ -11,10 +11,13 @@ test('next returns one task at a time, gated by phase and dependencies', () => {
   addTask(r, { id: 'IMP-2', title: 'b', phase: 'implement', depends_on: ['IMP-1'], criteria: ok });
   addTask(r, { id: 'IMP-1', title: 'a', phase: 'implement', criteria: ok });
   addTask(r, { id: 'DES-1', title: 'd', phase: 'design', criteria: bad });
+  commitBeforeBase(r);
   let n = P.taskNext(r); assert.equal(n.task, 'DES-1'); assert.match(n.brief, /# TASK DES-1/);
   assert.equal(P.E.gate(r, 'DES-1').decision, 'FAIL');
   assert.equal(P.taskNext(r).task, 'DES-1', 'design phase not verified: implement must wait');
   const c = P.C.load(r); c.tasks.find((t) => t.id === 'DES-1').criteria = ok; P.C.save(r, c);
+  commitBeforeBase(r);
+  P.taskNext(r, { base: sh(r, 'rev-parse', 'HEAD') });
   P.E.gate(r, 'DES-1');
   n = P.taskNext(r); assert.equal(n.task, 'IMP-1');
   P.E.gate(r, 'IMP-1');

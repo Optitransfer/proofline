@@ -207,7 +207,15 @@ try {
       }
       const c = P.C.load(root);
       const ids = flags.all ? c.tasks.map((t) => t.id) : flags.ci ? (c.ci?.tasks || []) : [requested || P.activeTask(root)].filter(Boolean);
-      if (!ids.length) { if (flags.ci) { const e = P.C.validate(c); print({ decision: e.length ? 'FAIL' : 'PASS', problems: e }, e.length ? e.join('\n') : 'contract valid; no ci.tasks'); process.exitCode = e.length ? 1 : 0; break; } throw new Error('which task? (proofline next)'); }
+      if (!ids.length) {
+        if (flags.ci) {
+          // Clearing ci.tasks is still a contract change. Refuse it before the empty-list short-circuit.
+          const refusal = P.E.unapprovedContractChange(root, base());
+          if (refusal) { print({ decision: 'BLOCKED', blocked: [refusal] }, `${refusal}\n\nDECISION: BLOCKED`); process.exitCode = 2; break; }
+          const e = P.C.validate(c); print({ decision: e.length ? 'FAIL' : 'PASS', problems: e }, e.length ? e.join('\n') : 'contract valid; no ci.tasks'); process.exitCode = e.length ? 1 : 0; break;
+        }
+        throw new Error('which task? (proofline next)');
+      }
       const outs = ids.map((id) => P.E.gate(root, id, { claims: claims(), base: base(), fresh: flags.fresh === true, skipTypes: flags['skip-pushed'] || flags.ci ? ['pushed'] : [] }));
       const worst = outs.some((o) => o.decision === 'BLOCKED') ? 'BLOCKED' : outs.some((o) => o.decision === 'FAIL') ? 'FAIL' : 'PASS';
       const note = settled ? `${settled.message}\n\n` : '';

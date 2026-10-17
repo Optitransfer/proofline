@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { repo, write, addTask, sh } from './helpers.mjs';
+import { repo, write, addTask, commitBeforeBase, sh } from './helpers.mjs';
 
 test('pushing the first commit of a two-commit branch gates that commit, not the tip', () => {
   const r = repo({ hooks: true });
   addTask(r, { id: 'T', title: 't', criteria: [{ verifier: { type: 'command', cmd: 'grep -qx first mark.txt' } }] });
+  commitBeforeBase(r);
   write(r, { 'mark.txt': 'first\n' });
   sh(r, 'add', '-A');
   sh(r, 'commit', '-q', '-m', 'first commit (T)');

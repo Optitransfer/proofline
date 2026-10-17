@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as P from '../src/index.mjs';
-import { repo, commitAll, BIN } from './helpers.mjs';
+import { repo, commitBeforeBase, BIN } from './helpers.mjs';
 
 const AGENTKEY = '/Users/imac27/programme-b/agentkey/bin/agentkey.mjs';
 
@@ -59,7 +59,7 @@ test('a pinned contract is refused until the owner signature matches, and the pu
     fs.writeFileSync(path.join(root, 'guard', 'owner.pub'), pub(box.env));
     const signed = run(root, ['contract', 'sign'], box.env);
     assert.equal(signed.status, 0, signed.stderr);
-    commitAll(root, 'signed contract');
+    commitBeforeBase(root);
     for (const args of COMMANDS) {
       const r = run(root, args, box.env);
       const text = `${r.stdout || ''}${r.stderr || ''}`;

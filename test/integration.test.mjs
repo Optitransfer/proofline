@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync, spawn } from 'node:child_process';
 import { runDemo } from '../examples/demo/demo.mjs';
-import { repo, write, addTask, sh, BIN } from './helpers.mjs';
+import { repo, write, addTask, commitBeforeBase, sh, BIN } from './helpers.mjs';
 import * as P from '../src/index.mjs';
 
 test('demo: claimed done without evidence FAILS, real work PASSES', () => {
@@ -17,6 +17,7 @@ test('CLI exit codes: 0 PASS, 1 FAIL, 2 BLOCKED; --json output', () => {
   addTask(r, { id: 'A', title: 'a', criteria: [{ verifier: { type: 'command', cmd: 'true' } }] });
   addTask(r, { id: 'B', title: 'b', criteria: [{ verifier: { type: 'command', cmd: 'false' } }] });
   addTask(r, { id: 'C', title: 'c', criteria: [{ verifier: { type: 'metric', cmd: 'node nope.mjs', key: 'x', op: '<', value: 1 } }] });
+  commitBeforeBase(r);
   const run = (...a) => spawnSync(process.execPath, [BIN, ...a, '--root', r], { encoding: 'utf8' });
   // The work is uncommitted on top of origin/main, so that is the base the tasks started from.
   assert.equal(run('gate', 'A', '--base', 'origin/main').status, 0); assert.equal(run('gate', 'B', '--base', 'origin/main').status, 1); assert.equal(run('gate', 'C', '--base', 'origin/main').status, 2);
@@ -35,7 +36,9 @@ test('hooks: pre-commit refuses a skipped test; bypass env var does not help', (
 test('hooks: pre-push refuses when the active task does not gate PASS', () => {
   const r = repo({ hooks: true });
   addTask(r, { id: 'A', title: 'a', criteria: [{ verifier: { type: 'command', cmd: 'false' } }] });
+  commitBeforeBase(r);
   P.taskNext(r);
+  write(r, { 'src/c.mjs': 'export const c = 1;\n' });
   sh(r, 'add', '-A'); sh(r, 'commit', '-q', '-m', 'c');
   const p = spawnSync('git', ['push', 'origin', 'main'], { cwd: r, encoding: 'utf8' });
   assert.notEqual(p.status, 0); assert.match(p.stderr, /pre-push: REFUSED/);
@@ -44,6 +47,7 @@ test('hooks: pre-push refuses when the active task does not gate PASS', () => {
 test('MCP server: initialize, tools/list, task_next and verify over stdio', async () => {
   const r = repo();
   addTask(r, { id: 'A', title: 'a', criteria: [{ verifier: { type: 'command', cmd: 'true' } }] });
+  commitBeforeBase(r);
   const p = spawn(process.execPath, [BIN, 'mcp', '--root', r]);
   const msgs = [
     { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05' } },

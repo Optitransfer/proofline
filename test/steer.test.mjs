@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as P from '../src/index.mjs';
-import { repo, write, addTask, commitAll, sh } from './helpers.mjs';
+import { repo, write, addTask, commitAll, commitBeforeBase, sh } from './helpers.mjs';
 
 const PUSH_AGAIN = /Commit, push|push to |git push|task_next/;
 
@@ -9,6 +9,7 @@ for (const withPushed of [true, false]) {
   test(`PASS closing text before and after the push (${withPushed ? 'pushed criterion' : 'no pushed criterion'})`, () => {
     const r = repo();
     addTask(r, { id: 'T', title: 't', criteria: [{ verifier: { type: 'command', cmd: 'true' } }, ...(withPushed ? [{ verifier: { type: 'pushed' } }] : [])] });
+    commitBeforeBase(r);
     P.taskNext(r);
     write(r, { 'src/x.mjs': 'export const x = 1;\n' });
     commitAll(r, 'T: x');
@@ -32,6 +33,7 @@ for (const withPushed of [true, false]) {
 test('after accepted claims on the pushed HEAD, the closing text points to next', () => {
   const r = repo({ files: { 'test/t.test.mjs': "import test from 'node:test';\ntest('t', () => {});\n" } });
   addTask(r, { id: 'T', title: 't', criteria: [{ verifier: { type: 'command', cmd: 'true' } }, { verifier: { type: 'pushed' } }] });
+  commitBeforeBase(r);
   P.taskNext(r);
   write(r, { 'src/x.mjs': 'export const x = 1;\n' });
   commitAll(r, 'T: x'); sh(r, 'push', '-q', 'origin', 'main');

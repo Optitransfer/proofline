@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import * as P from '../src/index.mjs';
 import { handle } from '../src/mcp.mjs';
-import { repo, addTask, BIN } from './helpers.mjs';
+import { repo, addTask, commitBeforeBase, BIN } from './helpers.mjs';
 
 const ok = [{ verifier: { type: 'command', cmd: 'true' } }];
 /** Three tasks in one phase: owner b first, then owner a, then unowned. */
@@ -35,6 +35,7 @@ test('validate refuses an owner outside defaults.owners, and any owner is fine w
 
 test('next --owner returns the owner\'s task or an unowned one, never another owner\'s', () => {
   const r = lanes({ owners: ['a', 'b'] });
+  commitBeforeBase(r);
   assert.equal(P.E.next(r).task, 'B-1', 'without --owner, next is unchanged');
   let n = P.taskNext(r, { owner: 'a' });
   assert.equal(n.task, 'A-1'); assert.match(n.brief, /Owner: a/);

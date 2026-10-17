@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as P from '../src/index.mjs';
-import { write, commitAll, sh } from './helpers.mjs';
+import { write, commitAll, parentAfterContract, sh } from './helpers.mjs';
 
 /** A repo whose only remote is named github, with proofline initialised and a task that must be pushed. */
 function githubRepo() {
@@ -75,6 +75,7 @@ test('a pushed criterion with its own remote wins over defaults.remote in the co
   sh(path.dirname(r), 'init', '-q', '--bare', '-b', 'main', mirror); sh(r, 'remote', 'add', 'mirror', mirror);
   const c = P.C.load(r); c.tasks.push(P.C.makeTask({ id: 'U', title: 'u', criteria: [{ verifier: { type: 'pushed', remote: 'mirror', branch: 'release' } }] })); P.C.save(r, c);
   commitAll(r, 'U'); sh(r, 'push', '-q', 'github', 'main');
+  parentAfterContract(r);
   const g = P.E.verifyTask(r, 'U', { base: 'HEAD~1' });
   assert.equal(g.decision, 'FAIL');
   assert.match(P.E.steer(g, P.C.load(r)), /`git push mirror release`/);

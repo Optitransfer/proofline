@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import * as P from '../src/index.mjs';
-import { repo, write, addTask, sh } from './helpers.mjs';
+import { repo, write, addTask, commitBeforeBase, sh } from './helpers.mjs';
 
 const hooksDir = (r) => path.join(r, '.git', 'hooks');
 /** A hook that logs its args and stdin next to the repo (not inside it), then exits with `code`. */
@@ -39,7 +39,9 @@ test('an existing pre-push hook that passes lets the proofline gate run', () => 
   const { out } = ownHook(r, 'pre-push', 0);
   P.init(r);
   addTask(r, { id: 'A', title: 'a', criteria: [{ verifier: { type: 'command', cmd: 'false' } }] });
+  commitBeforeBase(r);
   P.taskNext(r);
+  write(r, { 'src/c.mjs': 'export const c = 1;\n' });
   sh(r, 'add', '-A'); sh(r, 'commit', '-q', '-m', 'c');
   const p = push(r);
   assert.notEqual(p.status, 0);

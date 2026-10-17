@@ -256,6 +256,37 @@ export function weakenings(base, cur) {
   return out;
 }
 
+/** Fields whose canonical bytes differ. This is the refusal. weakenings() stays the explanation. */
+export function contractFieldChanges(base, cur) {
+  if (!base || !cur) return [];
+  if (contractHash(base) === contractHash(cur)) return [];
+  const out = [];
+  const walk = (a, b, path) => {
+    if (Object.is(a, b)) return;
+    const aArr = Array.isArray(a);
+    const bArr = Array.isArray(b);
+    if (aArr || bArr) {
+      const left = aArr ? a : [];
+      const right = bArr ? b : [];
+      const n = Math.max(left.length, right.length);
+      for (let i = 0; i < n; i++) {
+        const id = (right[i] && right[i].id) || (left[i] && left[i].id) || String(i);
+        walk(left[i], right[i], path ? `${path}/${id}` : String(id));
+      }
+      return;
+    }
+    if (a && b && typeof a === "object" && typeof b === "object") {
+      const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+      for (const k of keys) walk(a[k], b[k], path ? `${path}/${k}` : k);
+      return;
+    }
+    const shown = (v) => (v === undefined ? "absent" : JSON.stringify(v));
+    out.push(`${path}: ${shown(a)} -> ${shown(b)}`);
+  };
+  walk(base, cur, "");
+  return out;
+}
+
 export function loadFile(f) { return JSON.parse(fs.readFileSync(f, 'utf8')); }
 
 /** End index of the JSON array named `key`, so an append can keep every byte before it. */

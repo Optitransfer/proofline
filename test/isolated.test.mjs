@@ -4,12 +4,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as E from '../src/engine.mjs';
 import * as P from '../src/index.mjs';
-import { repo, addTask, commitAll } from './helpers.mjs';
+import { repo, addTask, commitBeforeBase, parentAfterContract } from './helpers.mjs';
 
 function withTask(criteria) {
   const r = repo();
   addTask(r, { id: 'T', title: 'Isolation', criteria });
-  commitAll(r, 'task');
+  commitBeforeBase(r);
+  parentAfterContract(r);
   return r;
 }
 
@@ -38,6 +39,8 @@ test('the fixture pins the image digest and an isolated command records it', () 
   const c = P.C.load(r);
   c.env = { image };
   P.C.save(r, c);
+  commitBeforeBase(r);
+  parentAfterContract(r);
   const out = E.verifyTask(r, 'T', { base: 'HEAD~1', isolated: true });
   assert.equal(out.isolated, true, out.blocked?.join('\n') || out.failing?.join('\n'));
   assert.ok(out.env_digest?.includes(image));

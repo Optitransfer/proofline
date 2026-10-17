@@ -25,3 +25,18 @@ export function repo({ hooks = false, files = {} } = {}) {
 export function write(r, files) { for (const [f, s] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(r, f)), { recursive: true }); fs.writeFileSync(path.join(r, f), s); } }
 export function addTask(r, spec) { const c = P.C.load(r); c.tasks.push(P.C.makeTask(spec)); P.C.save(r, c); }
 export function commitAll(r, m = 'wip') { sh(r, 'add', '-A'); sh(r, 'commit', '-q', '--no-verify', '-m', m); }
+
+/** Commit the setup contract and point origin/main at it, so the default base already contains that write. */
+export function commitBeforeBase(r) {
+  commitAll(r, 'contract');
+  const head = sh(r, 'rev-parse', 'HEAD');
+  const origin = sh(r, 'remote', 'get-url', 'origin');
+  // The bare origin fetches the commit. A client push would run the hook this fixture is not testing.
+  sh(origin, 'fetch', '-q', r, 'HEAD:refs/heads/main');
+  sh(r, 'update-ref', 'refs/remotes/origin/main', head);
+}
+
+/** One empty commit so HEAD~1 is the commit that already holds the setup contract. */
+export function parentAfterContract(r) {
+  sh(r, 'commit', '-q', '--allow-empty', '-m', 'work');
+}

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { repo, write, addTask, sh } from './helpers.mjs';
+import { repo, write, addTask, commitBeforeBase, sh } from './helpers.mjs';
 import { hookPrePush } from '../src/index.mjs';
 
 function push(r, args) {
@@ -12,6 +12,7 @@ test('a rebased branch does not gate a commit already on main', () => {
   const r = repo({ hooks: true });
   addTask(r, { id: 'MAIN', title: 'm', criteria: [{ verifier: { type: 'command', cmd: 'true' } }] });
   addTask(r, { id: 'BRANCH', title: 'b', criteria: [{ verifier: { type: 'command', cmd: 'true' } }] });
+  commitBeforeBase(r);
   write(r, { 'src/tasks.mjs': 'export const tasks = 1;\n' });
   sh(r, 'add', '-A');
   sh(r, 'commit', '-q', '-m', 'add the two tasks');
@@ -40,6 +41,7 @@ test('a commit that is not on a remote yet is still gated', () => {
   const r = repo({ hooks: true });
   addTask(r, { id: 'MAIN', title: 'm', criteria: [{ verifier: { type: 'command', cmd: 'false' } }] });
   addTask(r, { id: 'BRANCH', title: 'b', criteria: [{ verifier: { type: 'command', cmd: 'true' } }] });
+  commitBeforeBase(r);
   write(r, { 'src/tasks.mjs': 'export const tasks = 1;\n' });
   sh(r, 'add', '-A');
   sh(r, 'commit', '-q', '-m', 'add the two tasks');
@@ -65,6 +67,7 @@ const send = (r, args) => spawnSync('git', ['push', ...args], { cwd: r, encoding
 function setup() {
   const r = repo({ hooks: true });
   addTask(r, { id: 'MAIN', title: 'm', criteria: [{ verifier: { type: 'command', cmd: 'false' } }] });
+  commitBeforeBase(r);
   write(r, { 'src/tasks.mjs': 'export const tasks = 1;\n' });
   sh(r, 'add', '-A'); sh(r, 'commit', '-q', '-m', 'add the task');
   send(r, ['origin', 'HEAD:main']);
@@ -83,6 +86,7 @@ test('an unreadable server gates every commit in the range', () => {
   const r = repo({ hooks: true });
   addTask(r, { id: 'MAIN', title: 'm', criteria: [{ verifier: { type: 'command', cmd: 'true' } }] });
   addTask(r, { id: 'BRANCH', title: 'b', criteria: [{ verifier: { type: 'command', cmd: 'true' } }] });
+  commitBeforeBase(r);
   write(r, { 'src/main.mjs': 'export const main = 1;\n' });
   sh(r, 'add', '-A');
   sh(r, 'commit', '-q', '-m', 'main work (MAIN)');

@@ -4,7 +4,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as P from '../src/index.mjs';
-import { repo, commitAll, BIN } from './helpers.mjs';
+import { repo, commitBeforeBase, parentAfterContract, BIN } from './helpers.mjs';
 
 function flagRepo() {
   const root = repo();
@@ -14,7 +14,9 @@ function flagRepo() {
     criteria: [{ statement: 'the flag exists', verifier: { type: 'command', cmd: 'test -f ready.flag', expect_exit: 0 } }],
   }));
   P.C.save(root, c);
-  commitAll(root, 'task');
+  commitBeforeBase(root);
+  // The default base must contain the setup contract and must not be HEAD.
+  parentAfterContract(root);
   return root;
 }
 

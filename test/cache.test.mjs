@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import * as P from '../src/index.mjs';
 import { readLog, logPath } from '../src/evidence.mjs';
 import { handle } from '../src/mcp.mjs';
-import { repo, write, addTask, commitAll, sh, BIN } from './helpers.mjs';
+import { repo, write, addTask, commitAll, commitBeforeBase, sh, BIN } from './helpers.mjs';
 
 /**
  * A repo with one task T whose command criterion appends a line to a counter file outside the repo on every run.
@@ -19,7 +19,7 @@ function counterRepo({ reuse = true, cmd = (count) => `echo run >> '${count}'`, 
   if (reuse !== null) c.defaults.reuse_results = reuse;
   Object.assign(c.defaults, defaults); P.C.save(r, c);
   addTask(r, { id: 'T', title: 't', criteria: [{ statement: 'suite', verifier: { type: 'command', cmd: cmd(count) } }] });
-  commitAll(r, 'task');
+  commitBeforeBase(r);
   P.taskNext(r);
   const runs = () => (fs.existsSync(count) ? fs.readFileSync(count, 'utf8').split('\n').filter(Boolean).length : 0);
   return { r, runs, dir: path.dirname(r) };
@@ -104,7 +104,7 @@ test('only command and metric results are reused: a docs check on the same commi
   addTask(r, { id: 'T', title: 't', criteria: [
     { verifier: { type: 'command', cmd: `echo run >> '${at('cmd')}'` } },
     { verifier: { type: 'docs', cmd: `echo run >> '${at('docs')}'`, paths: ['package.json'] } }] });
-  commitAll(r, 'task'); P.taskNext(r);
+  commitBeforeBase(r); P.taskNext(r);
   const runs = (n) => fs.readFileSync(at(n), 'utf8').split('\n').filter(Boolean).length;
   ok(cli(r, ['verify', 'T'])); ok(cli(r, ['gate', 'T']));
   assert.equal(runs('cmd'), 1); assert.equal(runs('docs'), 2);
@@ -180,7 +180,7 @@ test('a metric PASS is reused with its measured value, and only within max_load_
   write(r, { 'bench/b.mjs': `import fs from 'node:fs'; fs.appendFileSync(${JSON.stringify(count)}, 'run\\n'); console.log(JSON.stringify({ flushMs: 1200 }));\n` });
   const c = P.C.load(r); c.defaults.reuse_results = true; P.C.save(r, c);
   addTask(r, { id: 'M', title: 'm', criteria: [{ verifier: { type: 'metric', cmd: 'node bench/b.mjs', key: 'flushMs', op: '<', value: 2000 } }] });
-  commitAll(r, 'task'); P.taskNext(r);
+  commitBeforeBase(r); P.taskNext(r);
   const runs = () => fs.readFileSync(count, 'utf8').split('\n').filter(Boolean).length;
   const machine = () => ({ load1: 3, cpus: 4 });
   assert.equal(P.E.verifyTask(r, 'M', { machine }).decision, 'PASS'); assert.equal(runs(), 1);

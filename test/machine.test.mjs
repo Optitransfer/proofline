@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import * as P from '../src/index.mjs';
-import { repo, addTask } from './helpers.mjs';
+import { repo, addTask, commitBeforeBase } from './helpers.mjs';
 
 const BENCH = (v) => `console.log(JSON.stringify({ flushMs: ${v} }));\n`;
 const NODE = execSync('node --version', { encoding: 'utf8' }).trim();
@@ -11,6 +11,7 @@ function metricRepo({ flushMs = 1200, max } = {}) {
   const r = repo({ files: { 'bench/b.mjs': BENCH(flushMs) } });
   if (max !== undefined) { const c = P.C.load(r); c.defaults.max_load_per_cpu = max; P.C.save(r, c); }
   addTask(r, { id: 'M', title: 'm', criteria: [{ verifier: { type: 'metric', cmd: 'node bench/b.mjs', key: 'flushMs', op: '<', value: 2000 } }] });
+  commitBeforeBase(r);
   P.taskNext(r);
   return r;
 }

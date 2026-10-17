@@ -84,6 +84,26 @@ export function taskBase(root, c, t, explicit) {
   return { ref, source, base, problems };
 }
 
+/** One line when the working contract differs from `explicit` (or the default base) and no marker approves it. */
+export function unapprovedContractChange(root, explicit) {
+  const c = C.load(root);
+  const ref = explicit || C.defaultBase(c);
+  const base = resolveBase(root, ref);
+  if (!base) return null;
+  const s = git(['show', `${base}:proofline.json`], root);
+  if (!s.ok) return null;
+  let baseContract;
+  try { baseContract = JSON.parse(s.out); } catch { return null; }
+  if (C.contractHash(baseContract) === C.contractHash(c)) return null;
+  let raw;
+  try { raw = fs.readFileSync(path.join(root, 'proofline.json')); } catch { return null; }
+  if (approvalMarker(root, raw).approved) return null;
+  const weak = C.weakenings(baseContract, c);
+  return weak.length
+    ? `contract weakened vs base (needs owner approval): ${weak.join('; ')}`
+    : 'contract bytes changed vs base (needs owner approval)';
+}
+
 const BASE_NEXT = 'gate against the revision the task started from: pass --base <rev> (for one commit, its parent), or start the task with `proofline next`, which pins the base. Do not pick a base that hides part of the work.';
 
 /** The "## Base" section of a brief: which base verify and gate will use, and whether they can. */
@@ -135,9 +155,11 @@ export function verifyTask(root, taskId, opts = {}) {
   const weak = C.weakenings(baseContract, c);
   // The forbidden scan skips proofline.json (it declares the deny-list); a contract change is reported here instead.
   let contractChange = !base ? 'unknown' : !baseContract ? 'added' : C.contractHash(baseContract) === C.contractHash(c) ? 'unchanged' : 'changed';
+  const fields = baseContract ? C.contractFieldChanges(baseContract, c) : [];
   let marker = null;
-  const approveWeakening = () => {
-    if (!weak.length) return false;
+  const hashChanged = contractChange === 'changed';
+  const approveChange = () => {
+    if (!hashChanged) return false;
     let raw = null;
     try { raw = fs.readFileSync(path.join(root, 'proofline.json')); } catch { raw = null; }
     const mark = approvalMarker(root, raw);
@@ -152,7 +174,13 @@ export function verifyTask(root, taskId, opts = {}) {
   if (errs.length) blocked.push(...errs.map((e) => `contract invalid: ${e}`));
   blocked.push(...baseProblems);
   if (!chain.ok) blocked.push(`evidence log tampered at entry ${chain.at}: ${chain.reason}`);
-  if (!approveWeakening()) for (const w of weak) blocked.push(`contract weakened vs base (needs owner approval): ${w}`);
+  if (hashChanged && !approveChange()) {
+    // One blocked line. weakenings() is the explanation, so a real weakening stays length 1.
+    if (weak.length) blocked.push(`contract weakened vs base (needs owner approval): ${weak.join('; ')}`);
+    else blocked.push('contract bytes changed vs base (needs owner approval)');
+  } else if (!hashChanged) {
+    for (const w of weak) blocked.push(`contract weakened vs base (needs owner approval): ${w}`);
+  }
   for (const r of results) {
     if (r.status === 'error') blocked.push(`${r.id}: could not run: ${r.detail}`);
     else if (r.status === 'blocked') blocked.push(`${r.id}: ${r.detail}`);
@@ -179,7 +207,7 @@ export function verifyTask(root, taskId, opts = {}) {
   const pushed = pr ? pr.status === 'pass'
     : !!hi.head && !git(['status', '--porcelain'], root).out.split('\n').some((l) => l && !l.includes('.proofline/')) && git(['rev-parse', '--verify', '--quiet', `refs/remotes/${tgt.remote}/${tgt.branch}^{commit}`], root).out === hi.head;
   const reused = results.filter((r) => r.reused).map((r) => ({ id: r.id, type: r.type, ts: r.reused.ts, entry: r.reused.entry }));
-  return { isolated: iso.isolated, env_digest: iso.env_digest, heuristic: true, coverage_limits: COVERAGE_LIMITS, pushed, task: t.id, title: t.title, phase: t.phase, decision, base, base_ref: baseRef, base_source: baseSource, ...hi, contract_hash: C.contractHash(c), results, reuse: !reuse.on ? 'off' : fresh ? 'fresh' : 'on', reused, forbidden, weakenings: weak, contract_change: contractChange, marker, blocked, failing, measured: ctx.measured, claims: claimResults, changed: [...ctx.changed.keys()], ts: new Date().toISOString() };
+  return { isolated: iso.isolated, env_digest: iso.env_digest, heuristic: true, coverage_limits: COVERAGE_LIMITS, pushed, task: t.id, title: t.title, phase: t.phase, decision, base, base_ref: baseRef, base_source: baseSource, ...hi, contract_hash: C.contractHash(c), results, reuse: !reuse.on ? 'off' : fresh ? 'fresh' : 'on', reused, forbidden, weakenings: weak, contract_fields: fields, contract_change: contractChange, marker, blocked, failing, measured: ctx.measured, claims: claimResults, changed: [...ctx.changed.keys()], ts: new Date().toISOString() };
 }
 
 /** Corrective prompt tied to each failed criterion. */

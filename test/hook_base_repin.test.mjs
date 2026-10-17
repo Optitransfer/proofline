@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import * as P from '../src/index.mjs';
-import { repo, write, addTask, sh } from './helpers.mjs';
+import { repo, write, addTask, commitBeforeBase, sh } from './helpers.mjs';
 
 test('a second start of the same task moves the base, and the refusal names the base used', () => {
   const r = repo({ hooks: true });
   addTask(r, { id: 'T', title: 't', criteria: [{ verifier: { type: 'command', cmd: 'false' } }] });
+  commitBeforeBase(r);
   const first = P.taskNext(r);
   const b1 = first.base;
   assert.equal(b1, sh(r, 'rev-parse', 'origin/main'));

@@ -299,11 +299,16 @@ export function hookPreCommit(root) {
     let cur; try { cur = JSON.parse(staged.toString('utf8')); } catch { return { ok: false, msg: 'staged proofline.json is not valid JSON' }; }
     let base = null; const s = git(['show', 'HEAD:proofline.json'], root); if (s.ok) try { base = JSON.parse(s.out); } catch {}
     w = C.weakenings(base, cur);
-    if (w.length) {
+    const fields = base && cur ? C.contractFieldChanges(base, cur) : [];
+    if (w.length || fields.length) {
       // Same check as verify and gate: a regular file named with the sha256 of these bytes.
       const mark = approvalMarker(root, staged);
       if (mark.approved) w = [];
-      else note = [`sha256 ${mark.hex}`, mark.marker ? `marker ${mark.marker}` : 'marker (no approvals directory configured)'].join('\n');
+      else {
+        note = [`sha256 ${mark.hex}`, mark.marker ? `marker ${mark.marker}` : 'marker (no approvals directory configured)'].join('\n');
+        // One explanation line. A non-weakening edit is still the hash refusal.
+        w = [w.length ? w.join('; ') : 'canonical bytes differ from HEAD'];
+      }
     }
   } else if (git(['cat-file', '-e', 'HEAD:proofline.json'], root).ok) {
     // Removed from the index. There are no staged bytes, so no marker name can approve the removal.
