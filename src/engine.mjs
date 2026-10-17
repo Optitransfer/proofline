@@ -8,6 +8,7 @@ import { scanForbidden } from './forbidden.mjs';
 import { parseClaims, checkClaim } from './claims.mjs';
 import { record, readLog, verifyChain } from './evidence.mjs';
 import * as RC from './cache.mjs';
+import { resolveIsolation, COVERAGE_LIMITS } from './isolate.mjs';
 
 export const KNOWN_LIMITS = [
   'Proofline runs on the same machine as the agent: an agent with shell access could edit .proofline/ or proofline.json. The hash chain makes edits detectable, contract weakening vs the base revision is flagged, and CI re-verifies from a clean checkout; protect proofline.json with CODEOWNERS/branch protection for a hard boundary.',
@@ -93,31 +94,39 @@ export function baseBrief(root, c, t, explicit) {
   return L.join('\n');
 }
 
-export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: explicitBase, machine, fresh = false } = {}) {
+export function verifyTask(root, taskId, opts = {}) {
+  const { claims, only, skipTypes = [], base: explicitBase, machine, fresh = false } = opts;
   const c = C.load(root);
   const t = taskById(c, taskId);
+  const iso = resolveIsolation(c, opts);
   const errs = C.validate(c);
   // Base is pinned when the task starts, so pushing the work does not move the goalposts.
   const { ref: baseRef, source: baseSource, base, problems: baseProblems } = taskBase(root, c, t, explicitBase);
-  const ctx = { root, contract: c, task: t, base, changed: base ? changedFiles(root, base) : new Map(), measured: {}, machine, baseline: c.baseline?.metrics, tolerancePct: c.defaults?.regression_tolerance_pct, flakyReruns: c.defaults?.flaky_reruns ?? 1 };
+  const ctx = { root, contract: c, task: t, base, changed: base ? changedFiles(root, base) : new Map(), measured: {}, machine, baseline: c.baseline?.metrics, tolerancePct: c.defaults?.regression_tolerance_pct, flakyReruns: c.defaults?.flaky_reruns ?? 1, sandbox: iso.sandbox };
   const results = [];
   const reuse = RC.settings(c);
   for (const a of t.criteria) {
     if (only && !only.includes(a.id)) continue;
     if (skipTypes.includes(a.verifier.type)) continue;
     let r;
-    // Reuse (opt-in): a command or metric PASS recorded on this HEAD with a clean tree is not run again; --fresh runs it.
-    const k = reuse.on && RC.REUSABLE.includes(a.verifier.type) ? RC.keyFor(root, a.verifier, ctx) : null;
-    const hit = k && !fresh ? RC.lookup(root, k.key, reuse) : null;
-    if (hit) {
-      r = RC.reusedResult(hit);
-      if (a.verifier.type === 'metric') ctx.measured[a.verifier.name || a.verifier.key] = hit.data.evidence.measured;
+    const sandboxed = ['command', 'test_red_green', 'metric'].includes(a.verifier.type);
+    if (iso.block && sandboxed) {
+      r = { status: 'error', detail: iso.block };
     } else {
-      try { r = verifiers[a.verifier.type](a.verifier, ctx); } catch (e) { r = { status: 'error', detail: `verifier crashed: ${e.message}` }; }
-      // Only a PASS is stored, and only if the tree is still the one the check started on and the log is intact.
-      if (k && r.status === 'pass' && RC.keyFor(root, a.verifier, ctx)?.key === k.key && verifyChain(root).ok) RC.store(root, k, t.id, a, r);
+      // Reuse (opt-in): a command or metric PASS recorded on this HEAD with a clean tree is not run again; --fresh runs it.
+      const k = reuse.on && RC.REUSABLE.includes(a.verifier.type) ? RC.keyFor(root, a.verifier, ctx) : null;
+      const hit = k && !fresh ? RC.lookup(root, k.key, reuse) : null;
+      if (hit) {
+        r = RC.reusedResult(hit);
+        if (a.verifier.type === 'metric') ctx.measured[a.verifier.name || a.verifier.key] = hit.data.evidence.measured;
+      } else {
+        try { r = verifiers[a.verifier.type](a.verifier, ctx); } catch (e) { r = { status: 'error', detail: `verifier crashed: ${e.message}` }; }
+        // Only a PASS is stored, and only if the tree is still the one the check started on and the log is intact.
+        if (k && r.status === 'pass' && RC.keyFor(root, a.verifier, ctx)?.key === k.key && verifyChain(root).ok) RC.store(root, k, t.id, a, r);
+      }
     }
-    results.push({ id: a.id, statement: a.statement, mandatory: a.mandatory !== false, type: a.verifier.type, ...r });
+    const heuristic = a.verifier.type === 'grep' || a.verifier.type === 'wiring';
+    results.push({ id: a.id, statement: a.statement, mandatory: a.mandatory !== false, type: a.verifier.type, ...(heuristic ? { heuristic: true } : {}), ...r });
   }
   const rules = { ...C.DEFAULT_FORBIDDEN, ...(c.forbidden || {}) };
   const forbidden = scanForbidden(root, base, rules);
@@ -170,7 +179,7 @@ export function verifyTask(root, taskId, { claims, only, skipTypes = [], base: e
   const pushed = pr ? pr.status === 'pass'
     : !!hi.head && !git(['status', '--porcelain'], root).out.split('\n').some((l) => l && !l.includes('.proofline/')) && git(['rev-parse', '--verify', '--quiet', `refs/remotes/${tgt.remote}/${tgt.branch}^{commit}`], root).out === hi.head;
   const reused = results.filter((r) => r.reused).map((r) => ({ id: r.id, type: r.type, ts: r.reused.ts, entry: r.reused.entry }));
-  return { pushed, task: t.id, title: t.title, phase: t.phase, decision, base, base_ref: baseRef, base_source: baseSource, ...hi, contract_hash: C.contractHash(c), results, reuse: !reuse.on ? 'off' : fresh ? 'fresh' : 'on', reused, forbidden, weakenings: weak, contract_change: contractChange, marker, blocked, failing, measured: ctx.measured, claims: claimResults, changed: [...ctx.changed.keys()], ts: new Date().toISOString() };
+  return { isolated: iso.isolated, env_digest: iso.env_digest, heuristic: true, coverage_limits: COVERAGE_LIMITS, pushed, task: t.id, title: t.title, phase: t.phase, decision, base, base_ref: baseRef, base_source: baseSource, ...hi, contract_hash: C.contractHash(c), results, reuse: !reuse.on ? 'off' : fresh ? 'fresh' : 'on', reused, forbidden, weakenings: weak, contract_change: contractChange, marker, blocked, failing, measured: ctx.measured, claims: claimResults, changed: [...ctx.changed.keys()], ts: new Date().toISOString() };
 }
 
 /** Corrective prompt tied to each failed criterion. */

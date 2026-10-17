@@ -1,0 +1,6 @@
+{
+  "image_name": "node:22.11.0",
+  "env": {
+    "image": "node:22.11.0@sha256:ec878c763e9fad09d22aae86e2edcb7a05b397dfe8411c16e2b90158d595e2ce"
+  }
+}

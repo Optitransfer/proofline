@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://proofline.dev/receipt/v1",
+  "type": "object",
+  "properties": {
+    "isolated": { "type": "boolean" },
+    "env_digest": { "type": ["string", "null"] },
+    "heuristic": {
+      "type": "boolean",
+      "description": "grep, wiring and the forbidden scan are one layer, not a boundary"
+    },
+    "coverage_limits": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["isolated", "heuristic"]
+}

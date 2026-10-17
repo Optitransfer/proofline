@@ -1,0 +1,1 @@
+test-weakened-by-snapshot is named in coverage_limits. The static checks do not catch it.

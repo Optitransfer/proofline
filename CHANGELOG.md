@@ -5,6 +5,7 @@ All notable project changes are recorded here. Dates use ISO 8601 (`YYYY-MM-DD`)
 ## [Unreleased]
 
 ### Added
+- `verify` and `gate` stay on the host unless `--isolated` is passed. That mode runs command, red-green and metric checks with no network, a fresh HOME, and the repository read-only except paths the check declares. The image digest is `env.image` on the contract under test. Without it, `--isolated` refuses and names `env.image`. The receipt records `isolated`, `env_digest` and `heuristic`. grep, wiring and the forbidden scan are one layer, not a boundary.
 - Every subcommand refuses a flag it does not accept, exits 2, and names the unknown flag and the accepted ones. Nothing runs after that refusal (#33).
 - The pre-push hook leaves out a commit already on the server default branch. It reads that head with `git ls-remote` of the push URL at send time, for an existing branch and for a new branch. A local remote-tracking ref does not count. If the server cannot be read, every commit in the range is gated (#31, #35).
 - The pre-push hook gates the commit being pushed, at that sha, in a temporary worktree. It reads the local sha from stdin and does not gate the checked-out HEAD. The base is the most recent `proofline next` pin for the task, or the parent of that commit, and a refusal prints the base it used. `proofline next --base <rev>` records a newer pin. A worktree with no evidence still gates, and stale evidence in the pushing worktree cannot block a commit that passes at its own sha (#21, #22, #23).

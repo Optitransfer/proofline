@@ -58,8 +58,10 @@ export function diffHunks(root, base) {
   return files;
 }
 
-function runCounted(cmd, root, v) {
-  const r = run(cmd, { cwd: root, timeoutS: v.timeout_s || 900, env: v.env });
+function runCounted(cmd, root, v, ctx) {
+  const r = ctx?.sandbox
+    ? ctx.sandbox(cmd, { cwd: root, timeoutS: v.timeout_s || 900, env: v.env, writable: v.writable })
+    : run(cmd, { cwd: root, timeoutS: v.timeout_s || 900, env: v.env });
   const txt = r.stdout + '\n' + r.stderr;
   const num = (k) => { const m = txt.match(new RegExp(`^[#ℹ]\\s*${k}\\s+(\\d+)`, 'm')); return m ? +m[1] : undefined; };
   r.counts = { tests: num('tests'), pass: num('pass'), fail: num('fail'), skipped: num('skipped'), todo: num('todo'), cancelled: num('cancelled') };
@@ -103,7 +105,7 @@ const named = (e) => {
 export const verifiers = {
   command(v, ctx) {
     const expect = v.expect_exit ?? 0;
-    let r = runCounted(v.cmd, ctx.root, v);
+    let r = runCounted(v.cmd, ctx.root, v, ctx);
     const first = ev(r), firstExit = r.exit;
     if (r.exit === 127) return { status: 'error', detail: `command not found: ${v.cmd}`, evidence: first };
     const tooMany = (r2) => {
@@ -117,7 +119,7 @@ export const verifiers = {
     if (r.exit === expect) return { status: 'fail', detail: [...tooMany(r), named(first)].filter(Boolean).join('; '), evidence: first };
     // Both runs keep their failing names: on a flaky result the first run's list is the tests that flapped.
     for (let i = 0; i < (ctx.flakyReruns ?? 1); i++) {
-      r = runCounted(v.cmd, ctx.root, v);
+      r = runCounted(v.cmd, ctx.root, v, ctx);
       if (r.exit === expect && !tooMany(r).length) return { status: 'flaky', detail: `failed (exit ${firstExit}${named(first) ? `; ${named(first)}` : ''}) then passed on re-run ${i + 1}: flaky, not a pass. Root-cause the non-determinism.`, evidence: { first, rerun: ev(r) } };
     }
     const rerun = ev(r), n = named(rerun.failing.length ? rerun : first);
@@ -150,8 +152,8 @@ export const verifiers = {
       }
       if (v.setup) run(v.setup, { cwd: wt, timeoutS: 900 });
       const cmd = sub(v.cmd, { test: v.test_file, name: v.test_name || '' });
-      const red = runCounted(cmd, wt, v);
-      const green = runCounted(cmd, ctx.root, v);
+      const red = runCounted(cmd, wt, v, ctx);
+      const green = runCounted(cmd, ctx.root, v, ctx);
       const evd = { base: ctx.base, red: ev(red), green: ev(green) };
       if (red.exit === 127 || green.exit === 127) return { status: 'error', detail: 'test command not found', evidence: evd };
       if (red.exit === 0) return { status: 'fail', detail: `test PASSES on base ${ctx.base.slice(0, 8)} without the change: it does not prove the change (tests how, not what?)`, evidence: evd };
@@ -174,7 +176,10 @@ export const verifiers = {
       const m = (ctx.machine || readMachine)();
       const machine = { load1: m.load1, cpus: m.cpus, load_per_cpu: +(m.load1 / Math.max(1, m.cpus)).toFixed(2), node: nodeVersion(ctx.root, v.env) };
       if (typeof max === 'number' && m.load1 / Math.max(1, m.cpus) > max) return { r: null, machine };
-      return { r: run(v.cmd, { cwd: ctx.root, timeoutS: v.timeout_s || 1800, env: v.env }), machine };
+      const exec = ctx.sandbox
+        ? (cmd, o) => ctx.sandbox(cmd, { ...o, writable: v.writable })
+        : (cmd, o) => run(cmd, o);
+      return { r: exec(v.cmd, { cwd: ctx.root, timeoutS: v.timeout_s || 1800, env: v.env }), machine };
     })();
     const on = `load ${machine.load1.toFixed(2)} / ${machine.cpus} CPUs, node ${machine.node || 'not found'}`;
     if (!r) return { status: 'blocked', detail: `machine busy: load ${machine.load1.toFixed(2)} over ${machine.cpus} CPUs = ${machine.load_per_cpu.toFixed(2)} per CPU > max_load_per_cpu ${max}; the bench was not run. Re-run when the machine is idle.`, evidence: { cmd: v.cmd, machine } };

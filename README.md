@@ -4,6 +4,8 @@
 
 A coding agent reports that a task is finished. Proofline does not take the report: it holds the definition of done as a contract a machine can check, hands the agent one task at a time, re-runs every check itself when the agent reports, and lets a commit through only when the evidence says PASS. The agent gets a corrective prompt that names the file and the line to fix next, never a verdict it can argue with. Zero dependencies, Node 22+, Apache-2.0.
 
+`proofline verify --isolated` and `proofline gate --isolated` run command, red-green and metric checks in a container. Local use stays off unless that flag is passed. The image digest is `env.image` on the contract under test. Without it, `--isolated` refuses and names `env.image`.
+
 ```mermaid
 flowchart LR
     C["proofline.json<br/>tasks, criteria, scope,<br/>forbidden actions"] --> N["proofline next<br/>one task, its brief,<br/>the base revision pinned"]
