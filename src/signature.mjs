@@ -72,10 +72,10 @@ export function verifyContractSignature(root) {
 export function signContract(root, env = process.env) {
   const home = env.AGENTKEY_HOME;
   if (typeof home !== 'string' || !home.trim()) {
-    throw new Error('AGENTKEY_HOME is not set, so no key directory was opened\nNext step: proofline contract sign');
+    throw new Error('AGENTKEY_HOME is not set, so no key directory was opened. It names the directory that holds the owner key proofline setup created\nNext step: export AGENTKEY_HOME=<that directory>, then run proofline contract sign again');
   }
   const bin = agentkeyBin(env);
-  if (!bin) throw new Error('agentkey is not on PATH\nNext step: proofline contract sign');
+  if (!bin) throw new Error('agentkey is not on PATH. The owner signature is made with agentkey (@optitransfer/agentkey)\nNext step: npm install --save-dev @optitransfer/agentkey and run npx proofline contract sign, or npm install -g @optitransfer/agentkey, then run proofline contract sign again');
   const hash = canonicalHash(root);
   const r = spawnSync(bin, ['sign', 'owner', '--type', PAYLOAD_TYPE], {
     input: hash, encoding: 'utf8', env: { ...env, AGENTKEY_HOME: home },
