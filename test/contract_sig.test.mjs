@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import * as P from '../src/index.mjs';
 import { repo, commitBeforeBase, BIN } from './helpers.mjs';
 
-const AGENTKEY = '/Users/imac27/programme-b/agentkey/bin/agentkey.mjs';
+// The real agentkey CLI from the @optitransfer/agentkey devDependency, so this test runs in any clone and in CI.
+const AGENTKEY = path.resolve(import.meta.dirname, '../node_modules/@optitransfer/agentkey/bin/agentkey.mjs');
 
 function agentEnv() {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pl-home-'));
