@@ -16,6 +16,16 @@ const WATCH_INTERVAL_MS = 1000;
 
 const refuse = (why, next) => new Error(`${why}\nNext step: ${next}`);
 
+// setup needs two things from the shell. Each refusal says what it is for and the exact commands that provide it.
+const noKeyHome = () => refuse(
+  'AGENTKEY_HOME is not set, so no key directory was opened. It names the directory that holds your owner key; proofline never picks one for you',
+  'export AGENTKEY_HOME="$HOME/.proofline-owner" (add it to your shell profile, contract sign reads it too), then run proofline setup again',
+);
+const noAgentkey = () => refuse(
+  'agentkey is not on PATH. proofline setup creates the owner key with agentkey (@optitransfer/agentkey)',
+  'npm install --save-dev @optitransfer/agentkey and run npx proofline setup, or npm install -g @optitransfer/agentkey, then run proofline setup again',
+);
+
 function pause(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -50,9 +60,9 @@ function hooksReady(root) {
 
 function createOwnerKey(env) {
   const home = env.AGENTKEY_HOME;
-  if (typeof home !== 'string' || !home.trim()) throw refuse('AGENTKEY_HOME is not set, so no key directory was opened', 'proofline setup');
+  if (typeof home !== 'string' || !home.trim()) throw noKeyHome();
   const bin = agentkeyBin(env);
-  if (!bin) throw refuse('agentkey is not on PATH', 'proofline setup');
+  if (!bin) throw noAgentkey();
   const r = spawnSync(bin, ['init', 'owner'], { encoding: 'utf8', env: { ...env, AGENTKEY_HOME: home } });
   if (r.error || r.status !== 0) throw refuse('agentkey init owner failed', 'proofline setup');
   const key = path.join(home, 'keys', 'owner.key');
@@ -111,8 +121,8 @@ export function setup(root, { agent = 'none', env = process.env } = {}) {
   if (agent !== 'none' && agent !== 'claude-code') throw refuse(`unknown agent ${agent}`, 'proofline setup --agent none');
   if (!git(['rev-parse', '--show-toplevel'], root).ok) throw refuse('not a git repository', 'git init');
   const approvals = path.resolve(root, '.proofline', 'approvals');
-  if (typeof env.AGENTKEY_HOME !== 'string' || !env.AGENTKEY_HOME.trim()) throw refuse('AGENTKEY_HOME is not set, so no key directory was opened', 'proofline setup');
-  if (!agentkeyBin(env)) throw refuse('agentkey is not on PATH', 'proofline setup');
+  if (typeof env.AGENTKEY_HOME !== 'string' || !env.AGENTKEY_HOME.trim()) throw noKeyHome();
+  if (!agentkeyBin(env)) throw noAgentkey();
   checkOwnerPin(root, env);
   try {
     init(root, { hooks: true, approvals });

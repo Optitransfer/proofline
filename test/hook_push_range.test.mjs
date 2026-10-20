@@ -1,3 +1,4 @@
+// Regressions for #31 (a rebased branch re-gated tasks already on main) and #35 (a forged remote-tracking ref skipped the gate).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';

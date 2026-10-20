@@ -1,3 +1,4 @@
+// Regression for #23: a push from a worktree with no task evidence is still gated.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

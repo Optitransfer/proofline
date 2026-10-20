@@ -18,6 +18,12 @@ for (let i = 0; i < argv.length; i++) {
   if (a.startsWith('--')) { const [k, v] = a.slice(2).split('='); if (v !== undefined) flags[k] = v; else if (!SWITCHES.includes(k) && argv[i + 1] && !argv[i + 1].startsWith('--')) flags[k] = argv[++i]; else flags[k] = true; }
   else pos.push(a);
 }
+// --version (or -v) on its own prints the installed package version and exits 0, before any repository is read.
+if ((pos.length === 0 && flags.version === true && Object.keys(flags).length === 1) || (argv.length === 1 && argv[0] === '-v')) {
+  const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  process.stdout.write(`${pkg.version}\n`);
+  process.exit(0);
+}
 const root = flags.root ? flags.root : P.findRoot();
 const json = !!flags.json;
 const print = (obj, text) => { process.stdout.write((json || text === undefined ? JSON.stringify(obj, null, 2) : text) + '\n'); };
@@ -73,6 +79,7 @@ const HELP = `proofline: independent V&V and delivery controller
   hook stop                             read a Stop hook payload on stdin; one receipt for new commits, or silence
   connect claude-code                   merge a Stop hook into ~/.claude/settings.json, after any hook already there
   mcp                                   MCP server on stdio
+  --version                             print the installed version
 Global: --json  --root <dir>   Exit: 0 PASS, 1 FAIL, 2 BLOCKED, 3 usage`;
 
 const GLOBAL_FLAGS = ['json', 'root'];

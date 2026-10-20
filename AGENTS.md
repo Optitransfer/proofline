@@ -23,7 +23,7 @@ Proofline rejects: "done" without a commit, test names or measured numbers; numb
 
 - Skip/only/todo tests, raise timeouts, delete tests or assertions, edit fixtures to pass (unless the fixture is the proven root cause, with proof).
 - Lower a target, cap or test size, or touch thresholds/commands/criteria in `proofline.json` (detected; BLOCKED until the owner approves).
-- `--no-verify`, bypass env vars, skip flags. There is no bypass. If CI runs `proofline gate --ci`, it re-runs the gate.
+- Skip the git hooks (the no-verify flag on commit or push), set bypass env vars or pass skip flags. There is no bypass. If CI runs `proofline gate --ci`, it re-runs the gate.
 - Say "done" for anything that is not PASS on the pushed HEAD.
 - Defer. Only the owner approves a deferral.
 

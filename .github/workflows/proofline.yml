@@ -16,6 +16,8 @@ jobs:
         with:
           node-version: 22
       - run: git config --global user.email ci@proofline.local && git config --global user.name ci
+      - name: Install the pinned dev dependencies (agentkey, hivevault) from the committed lockfile
+        run: npm ci --ignore-scripts
       - name: Proofline self-gate (independent re-verification; hooks cannot be skipped here)
         # A fresh checkout has no pinned base and, after a push, origin/main is HEAD: gate against the previous tip.
         run: node bin/proofline.mjs gate --ci ${{ github.event_name == 'push' && format('--base {0}', github.event.before) || '' }}

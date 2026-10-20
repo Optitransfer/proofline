@@ -1,3 +1,4 @@
+// Regression for #22: a later start moves the pinned base.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
