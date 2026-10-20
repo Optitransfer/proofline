@@ -1,3 +1,4 @@
+// Regression for #33: every subcommand refuses a flag it does not accept.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';

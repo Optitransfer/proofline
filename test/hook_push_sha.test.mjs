@@ -1,3 +1,4 @@
+// Regression for #21: the pre-push hook gates the commit being pushed, not the checked-out HEAD.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
