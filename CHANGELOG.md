@@ -7,12 +7,14 @@ All notable project changes are recorded here. Dates use ISO 8601 (`YYYY-MM-DD`)
 ### Added
 - `proofline --version` (and `-v`) prints the installed version and exits 0. On a subcommand `--version` is still an unknown flag.
 - The README and the package carry the Proofline mark (`docs/logo.svg`, `docs/logo-white.svg`, PNGs at 512 and 128).
+- The tests column of a claim line takes `crit:<criterion id>` for a task whose proof is a command the gate runs rather than a test file it adds, such as an intake or measurement task. The name holds only when it is a criterion of that task, it ran in this gate, its type is `command`, `metric`, `test_red_green` or `docs`, and it passed. An unknown id, another task's criterion, a `grep`, `file_exists`, `scope` or `wiring` check, or a criterion that did not pass is a claim mismatch that names the reason. Other names are still looked up in the repository, and `-`, `n/a` and `none` still name no test.
 
 ### Fixed
 - `proofline setup` no longer ends in "Next step: proofline setup" when `AGENTKEY_HOME` is unset or `agentkey` is not on PATH. Each refusal says what the variable or the command is for and prints the exact command that provides it (`export AGENTKEY_HOME=...`, `npm install --save-dev @optitransfer/agentkey`). `proofline contract sign` does the same. The README documents both before the short path.
 - The `AGENTS.md` the README tells you to copy no longer trips the `no_verify` rule of a fresh contract on the first `verify`: its "Never" list names the hook-skipping flag in words.
 - The owner-signature test ran agentkey from a path on one laptop. It now runs the `@optitransfer/agentkey` devDependency, and CI installs the lockfile with `npm ci --ignore-scripts` before the self-gate.
 - The repository moved to `github.com/Optitransfer/proofline`; `homepage`, `repository` and `bugs` in package.json point there. The old URL redirects.
+- A `grep` pattern that starts with `(?i)`, `(?s)` or `(?m)`, the way a Python verifier writes flags, runs with those flags. It crashed as an invalid group, so a contract shared with a Python gate was BLOCKED here and PASS there.
 
 ## 0.2.0-next.1 (2026-10-17)
 

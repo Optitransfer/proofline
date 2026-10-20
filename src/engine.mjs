@@ -193,7 +193,7 @@ export function verifyTask(root, taskId, opts = {}) {
   for (const a of t.criteria) if (a.verifier.type === 'metric') metricLabels[a.verifier.name || a.verifier.key] = a.verifier.labels || [];
   const claimResults = [];
   if (claims) {
-    const res = { decision, failing: [...blocked, ...failing], measured: ctx.measured, metricLabels };
+    const res = { decision, failing: [...blocked, ...failing], measured: ctx.measured, metricLabels, criteria: results.map(({ id, type, status }) => ({ id, type, status })) };
     const needPush = t.criteria.some((a) => a.verifier.type === 'pushed');
     for (const cl of parseClaims(claims, [t.id])) claimResults.push(checkClaim(root, cl, res, { requirePushed: needPush, ...pushTarget(c, t) }));
     for (const cr of claimResults) if (!cr.ok) failing.push(...cr.issues.map((i) => `claim mismatch: ${i}`));
