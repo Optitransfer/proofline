@@ -1,4 +1,13 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-white.svg">
+    <img src="docs/logo.svg" alt="Proofline" width="96" height="96">
+  </picture>
+</p>
+
 # Proofline
+
+[![proofline](https://github.com/Optitransfer/proofline/actions/workflows/proofline.yml/badge.svg)](https://github.com/Optitransfer/proofline/actions/workflows/proofline.yml) [![npm](https://img.shields.io/npm/v/@optitransfer/proofline/next?label=npm%40next)](https://www.npmjs.com/package/@optitransfer/proofline)
 
 **The agent says done. Proofline verifies and validates the work against a V&V contract, to assure agent performance.**
 
@@ -116,7 +125,7 @@ PROOFLINE CORRECTIVE INSTRUCTION for TASK-1 (Reject an empty body): gate FAIL
 DECISION: FAIL
 ```
 
-Exit codes: `0` PASS, `1` FAIL, `2` BLOCKED, `3` usage. Every command takes `--json`. The published package is `@optitransfer/proofline` at `0.2.0-next.0` on the `next` dist-tag: `npx @optitransfer/proofline@next`.
+Exit codes: `0` PASS, `1` FAIL, `2` BLOCKED, `3` usage. Every command takes `--json`. The published package is `@optitransfer/proofline` at `0.2.0-next.1` on the `next` dist-tag: `npx @optitransfer/proofline@next`. `npx proofline --version` prints the version you have.
 
 ## How you use it, start to finish
 
@@ -125,6 +134,17 @@ Exit codes: `0` PASS, `1` FAIL, `2` BLOCKED, `3` usage. Every command takes `--j
 `proofline setup` then `proofline task "<plain words>"` then `proofline contract approve` then `proofline watch`.
 
 That is the short path: four commands, in that order. The diagram and the table below are the manual path.
+
+`proofline setup` needs two things from your shell, and stops before it writes anything when either is missing, naming the command that provides it:
+
+- `AGENTKEY_HOME`: the directory that holds your owner key. Proofline never picks one for you. For example `export AGENTKEY_HOME="$HOME/.proofline-owner"`, in your shell profile, because `proofline contract sign` reads it too.
+- `agentkey` on PATH: the owner key is made with [agentkey](https://github.com/mgillr/agentkey). `npm install --save-dev @optitransfer/agentkey` and run Proofline through `npx`, or `npm install -g @optitransfer/agentkey`.
+
+```bash
+export AGENTKEY_HOME="$HOME/.proofline-owner"
+npm install --save-dev @optitransfer/proofline@next @optitransfer/agentkey
+npx proofline setup
+```
 
 Once `guard/owner.pub` is pinned, `proofline contract sign` writes `proofline.json.sig` and `proofline contract verify-sig` checks it. `proofline contract propose` writes `proposals/<sha256>.diff` and prints the hash. An unsigned or altered contract is refused with `contract not owner-signed`.
 

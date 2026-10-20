@@ -2,6 +2,18 @@
 
 All notable project changes are recorded here. Dates use ISO 8601 (`YYYY-MM-DD`).
 
+## Unreleased
+
+### Added
+- `proofline --version` (and `-v`) prints the installed version and exits 0. On a subcommand `--version` is still an unknown flag.
+- The README and the package carry the Proofline mark (`docs/logo.svg`, `docs/logo-white.svg`, PNGs at 512 and 128).
+
+### Fixed
+- `proofline setup` no longer ends in "Next step: proofline setup" when `AGENTKEY_HOME` is unset or `agentkey` is not on PATH. Each refusal says what the variable or the command is for and prints the exact command that provides it (`export AGENTKEY_HOME=...`, `npm install --save-dev @optitransfer/agentkey`). `proofline contract sign` does the same. The README documents both before the short path.
+- The `AGENTS.md` the README tells you to copy no longer trips the `no_verify` rule of a fresh contract on the first `verify`: its "Never" list names the hook-skipping flag in words.
+- The owner-signature test ran agentkey from a path on one laptop. It now runs the `@optitransfer/agentkey` devDependency, and CI installs the lockfile with `npm ci --ignore-scripts` before the self-gate.
+- The repository moved to `github.com/Optitransfer/proofline`; `homepage`, `repository` and `bugs` in package.json point there. The old URL redirects.
+
 ## 0.2.0-next.1 (2026-10-17)
 
 ### Added
