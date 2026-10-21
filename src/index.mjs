@@ -354,6 +354,12 @@ function gateAtCommit(root, sha, id) {
       const add = git(['worktree', 'add', '--detach', '--force', wt, sha], root);
       if (!add.ok) return { ok: false, msg: `${id} at ${sha}: worktree failed: ${add.err}\nbase ${baseRef}` };
       added = true;
+      // The contract deliberately stays untracked (scope and hygiene keep it out of the
+      // tree), so a commit does not carry it. A gate at that commit still needs it: copy
+      // the root's contract into the fresh worktree when the commit does not track one.
+      for (const f of ['proofline.json']) {
+        if (!fs.existsSync(path.join(wt, f)) && fs.existsSync(path.join(root, f))) fs.copyFileSync(path.join(root, f), path.join(wt, f));
+      }
       let g;
       try { g = E.gate(wt, id, { skipTypes: ['pushed'], base: baseRef }); }
       catch (e) { return { ok: false, msg: `${id} at ${sha}: ${e.message}\nbase ${baseRef}` }; }
