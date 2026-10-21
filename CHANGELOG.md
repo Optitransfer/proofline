@@ -2,7 +2,7 @@
 
 All notable project changes are recorded here. Dates use ISO 8601 (`YYYY-MM-DD`).
 
-## Unreleased
+## 0.2.0-next.2 (2026-10-21)
 
 ### Added
 - `proofline --version` (and `-v`) prints the installed version and exits 0. On a subcommand `--version` is still an unknown flag.
