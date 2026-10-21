@@ -4,6 +4,22 @@ import { git, onRemote } from './util.mjs';
 const DONE = /^(done|complete(d)?|verified|pass(ed)?|fixed|finished|green)$/i;
 const HEDGE = /\b(should work|likely|probably|untested|not tested|later|follow[- ]?up|out of scope|defer(red)?|todo|next session|in a future)\b/i;
 
+// `crit:<criterion id>` in the tests column names one of the task's own executed criteria instead of a file in the
+// repo, for a task whose proof is a command run by the gate and not a test it adds (an intake or measurement task).
+const CRIT = /^crit:(\S+)$/i;
+const EXECUTED = ['command', 'metric', 'test_red_green', 'docs'];
+
+/** Why `crit:<id>` does not prove the claim, or nothing: it must be a criterion of this task that ran a command in this gate and passed. */
+export function critIssues(id, task, res) {
+  const rows = res?.criteria;
+  if (!Array.isArray(rows)) return [`named criterion "crit:${id}" cannot be checked: the gate passed no criterion results`];
+  const r = rows.find((x) => x.id === id);
+  if (!r) return [`named criterion "crit:${id}" is not a criterion of ${task} that this gate ran`];
+  if (!EXECUTED.includes(r.type)) return [`named criterion "crit:${id}" is a ${r.type} check, which runs no test: name a command, metric, test_red_green or docs criterion`];
+  if (r.status !== 'pass') return [`named criterion "crit:${id}" is ${String(r.status).toUpperCase()} in this gate, not PASS`];
+  return [];
+}
+
 /** Lines: TASK-ID | status | commit | tests | measured vs target | missing */
 export function parseClaims(text, taskIds) {
   const out = [];
@@ -42,6 +58,8 @@ export function checkClaim(root, claim, res, { requirePushed = false, remote = '
   if (claimedDone && !names.length) issues.push('claimed done without naming the test(s) that prove it');
   for (const n of names) {
     const base = n.replace(/\s*\(.*\)$/, '').split(/\s+/)[0];
+    const crit = base.match(CRIT);
+    if (crit) { issues.push(...critIssues(crit[1], claim.id, res)); continue; }
     if (!git(['grep', '-q', '-F', base], root).ok && !git(['ls-files', '--', `*${base}*`], root).out) issues.push(`named test "${base}" not found in the repo`);
   }
   const keys = Object.keys(res.measured || {});

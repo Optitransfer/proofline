@@ -3832,9 +3832,205 @@
         "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
         "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
       ]
+    },
+    {
+      "id": "PL-CRIT01",
+      "title": "A claim can name an executed criterion with crit:<id>, and a grep pattern may start with (?i) or (?s)",
+      "phase": "implement",
+      "owner": "lane-a",
+      "depends_on": [],
+      "requirements": [
+        "REQ-008",
+        "REQ-009"
+      ],
+      "scope": {
+        "allow": [
+          "src/claims.mjs",
+          "src/engine.mjs",
+          "src/checks.mjs",
+          "test/claims_crit.test.mjs",
+          "test/grep_inline_flags.test.mjs",
+          "CHANGELOG.md"
+        ]
+      },
+      "description": "Two gaps found on 2026-10-20. (1) checkClaim (src/claims.mjs:40-46) accepts a tests-column name only when git grep -F or git ls-files finds it, and drops '-', 'n/a' and 'none', so an intake or measurement task, whose proof is a command the gate runs and not a test file it adds, cannot make an honest done claim (the oll4com/spaceapp #64 intake task PR64-00 had to be recorded PASS-BY-EVIDENCE). The tests column takes crit:<criterion id>; it holds only when the id is a criterion of the claimed task that ran in this gate, of type command, metric, test_red_green or docs, with status pass. An unknown id, another task's criterion, a grep, file_exists, scope or wiring check, or a criterion that did not pass is a claim mismatch naming the reason. The gate passes checkClaim the id, type and status of each criterion it ran (src/engine.mjs). Any other name is still looked up in the repository, and '-', 'n/a' and 'none' still name no test. (2) the grep verifier (src/checks.mjs:211-214) builds new RegExp(v.pattern, v.flags || 'm'); a leading (?i) or (?s), as a Python verifier writes flags, throws 'Invalid group', so the x402-conformance contract (XC-00-AC03, XC-04-AC12, XC-04-AC13, XC-M2-AC02) is BLOCKED here and PASS in its own CI. A leading (?i), (?s) or (?m) becomes flags added to the criterion's own; a pattern without one is unchanged and stays case-sensitive. Both are recorded under Unreleased in CHANGELOG.md.",
+      "criteria": [
+        {
+          "id": "PL-CRIT01-AC01",
+          "mandatory": true,
+          "statement": "crit:<id> holds for a passing executed criterion of the task and is refused, with the reason, for an unknown id, another task, a check that runs nothing and a failing criterion",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/claims_crit.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-CRIT01-AC02",
+          "mandatory": true,
+          "statement": "a grep pattern starting with (?i) or (?s) runs with those flags instead of crashing, and a pattern without one stays case-sensitive",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/grep_inline_flags.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "PL-CRIT01-AC03",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-CRIT01-AC04",
+          "mandatory": true,
+          "statement": "the changelog records the crit:<id> claims form under Unreleased",
+          "verifier": {
+            "type": "grep",
+            "file": "CHANGELOG.md",
+            "pattern": "^- The tests column of a claim line takes `crit:<criterion id>`",
+            "must": "present",
+            "flags": "m"
+          }
+        },
+        {
+          "id": "PL-CRIT01-AC05",
+          "mandatory": true,
+          "statement": "the changelog records the inline-flag grep fix",
+          "verifier": {
+            "type": "grep",
+            "file": "CHANGELOG.md",
+            "pattern": "^- A `grep` pattern that starts with `\\(\\?i\\)`",
+            "must": "present",
+            "flags": "m"
+          }
+        },
+        {
+          "id": "PL-CRIT01-AC06",
+          "mandatory": true,
+          "statement": "crit: names are resolved on the default gate path",
+          "verifier": {
+            "type": "wiring",
+            "entry": "bin/proofline.mjs",
+            "symbol": "critIssues"
+          }
+        },
+        {
+          "id": "PL-CRIT01-AC07",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-CRIT01-AC08",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "PL-NEXT2",
+      "title": "Version 0.2.0-next.2, so npm carries PL-CRIT01",
+      "phase": "release",
+      "owner": "lane-a",
+      "depends_on": [
+        "PL-CRIT01"
+      ],
+      "requirements": [
+        "PL-R01",
+        "TB-R07"
+      ],
+      "scope": {
+        "allow": [
+          "package.json",
+          "package-lock.json",
+          "CHANGELOG.md"
+        ]
+      },
+      "description": "npm's @optitransfer/proofline is at 0.2.0-next.1 (latest and next, measured 2026-10-20), which predates PL-CRIT01. The version moves to 0.2.0-next.2 in package.json and package-lock.json (npm install --package-lock-only --ignore-scripts, empty user config), and the Unreleased heading in CHANGELOG.md becomes \"## 0.2.0-next.2 (2026-10-20)\". The owner publishes it from his terminal from the landed commit (npm publish --access public --tag next --auth-type=web) and records the registry's version and bin.",
+      "criteria": [
+        {
+          "id": "PL-NEXT2-AC01",
+          "mandatory": true,
+          "statement": "package.json says 0.2.0-next.2",
+          "verifier": {
+            "type": "grep",
+            "file": "package.json",
+            "pattern": "\"version\":\\s*\"0\\.2\\.0-next\\.2\"",
+            "must": "present"
+          }
+        },
+        {
+          "id": "PL-NEXT2-AC02",
+          "mandatory": true,
+          "statement": "the changelog dates 0.2.0-next.2 and keeps no Unreleased heading",
+          "verifier": {
+            "type": "command",
+            "cmd": "node -e \"const s=require('fs').readFileSync('CHANGELOG.md','utf8');process.exit(/^## 0\\.2\\.0-next\\.2 \\(2026-10-[0-9]{2}\\)$/m.test(s)&&!/^## Unreleased$/m.test(s)?0:1)\"",
+            "expect_exit": 0,
+            "timeout_s": 60
+          }
+        },
+        {
+          "id": "PL-NEXT2-AC03",
+          "mandatory": true,
+          "statement": "the packed tarball is 0.2.0-next.2, holds bin/proofline.mjs and the manifest names it as the proofline command",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c \"npm pack --dry-run --json --ignore-scripts > /tmp/pl-pack.json && node -e \\\"const p=require('/tmp/pl-pack.json')[0];process.exit(p.version==='0.2.0-next.2'&&p.files.some(f=>f.path==='bin/proofline.mjs')&&require('./package.json').bin.proofline==='bin/proofline.mjs'?0:1)\\\"\"",
+            "expect_exit": 0,
+            "timeout_s": 300
+          }
+        },
+        {
+          "id": "PL-NEXT2-AC04",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "PL-NEXT2-AC05",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "PL-NEXT2-AC06",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
     }
   ],
-  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. PL-SELF stays: proofline verifies itself with its own contract. | 2026-10-17: 15 review tasks appended (COVERAGE.md maps every finding and open issue). Scope criterion added to PL-SELF, DG-PL so the contract passes its own validator. | 2026-10-17: PL-SETUP01 (setup pins the owner key) and PL-NEXT1 (0.2.0-next.1 carries the bin) appended.",
+  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. PL-SELF stays: proofline verifies itself with its own contract. | 2026-10-17: 15 review tasks appended (COVERAGE.md maps every finding and open issue). Scope criterion added to PL-SELF, DG-PL so the contract passes its own validator. | 2026-10-17: PL-SETUP01 (setup pins the owner key) and PL-NEXT1 (0.2.0-next.1 carries the bin) appended. | 2026-10-20: PL-CRIT01 (crit:<id> claims for tasks proved by a command; leading (?i)/(?s) grep flags) and PL-NEXT2 (0.2.0-next.2) appended.",
   "ci": {
     "tasks": [
       "PL-SELF"

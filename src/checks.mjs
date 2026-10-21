@@ -212,7 +212,9 @@ export const verifiers = {
     const f = path.join(ctx.root, v.file);
     if (!fs.existsSync(f)) return { status: 'fail', detail: `${v.file} not found` };
     const txt = fs.readFileSync(f, 'utf8');
-    const re = new RegExp(v.pattern, v.flags || 'm');
+    // A leading (?i), (?s) or (?m) is how Python writes these flags; JavaScript refuses it as an invalid group.
+    const lead = String(v.pattern).match(/^\(\?([ims]+)\)/);
+    const re = new RegExp(lead ? v.pattern.slice(lead[0].length) : v.pattern, [...new Set((v.flags || 'm') + (lead ? lead[1] : ''))].join(''));
     const m = txt.match(re);
     const want = (v.must || 'present') === 'present';
     if (!!m === want) return { status: 'pass', detail: `/${v.pattern}/ ${want ? 'present' : 'absent'} in ${v.file}`, evidence: m ? { line: txt.slice(0, m.index).split('\n').length, text: m[0] } : undefined };
