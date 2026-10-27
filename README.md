@@ -219,6 +219,7 @@ Two or more builders can share one contract. A task may carry an `owner`, and `d
 
 `proofline contract merge <fragment.json> [--owners a=b,c=d]` appends the fragment's tasks and any owner rule that is not already there. A duplicate id is refused and the file is left untouched. Existing tasks and the bytes around them stay. The command prints the sha256 of the result. `proofline contract coverage <REQUIREMENTS.md> [--contracts a.json,b.json]` reads ids from lines of the form `- ID: text` and prints one line per id with the tasks that name it, or `MISSING`. A task that names an id the file does not list is `unknown`. The exit code is 1 when any id is missing or unknown.
 
+`proofline contract decompose <scope.json> --out docs/proposals/<name>.json [--against proofline.json] [--check]` turns a scope file (an id prefix and tasks with their title, acceptance checks, requirement ids, dependencies and an owner placeholder) into an unsigned proposal that `contract merge` accepts. The same scope always gives the same bytes. It refuses a duplicate id, an unknown dependency and a task `contract validate` would refuse, and it never writes `proofline.json` or a `.sig`. `--check` exits 1 when the committed proposal is not the output of its scope. [docs/DECOMPOSITION.md](docs/DECOMPOSITION.md) is the whole process, from scope file to signed contract, with a CI job.
 
 ### Git hooks
 

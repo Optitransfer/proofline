@@ -2,6 +2,12 @@
 
 All notable project changes are recorded here. Dates use ISO 8601 (`YYYY-MM-DD`).
 
+## Unreleased
+
+### Added
+
+- `proofline contract decompose <scope.json> [--out <proposal.json>] [--against a.json,b.json] [--check] [--lint-warn]` turns a scope file (`proofline-scope/1`: an id prefix, tasks with title, acceptance checks, requirement ids, dependencies and an owner placeholder, plus shared defaults and criteria put before or after each task's own) into an unsigned proposal that `contract merge` accepts. The output is byte-stable: fixed key order, criterion ids `<task>-AC01...`, two-space JSON and a final newline, and the command prints its sha256. A duplicate id (in the scope or in an `--against` contract), an unknown dependency, a cycle and a task `contract validate` would refuse are refused and nothing is written. It never writes `proofline.json` or a `.sig`. `--check` exits 1 when the `--out` file differs from what the scope gives. `docs/DECOMPOSITION.md` describes the process from scope file to proposal PR, fold with `merge`, `sign` and `verify-sig`, with a CI job. The toy fixture is `fixtures/decompose/`.
+
 ## 0.2.0-next.2 (2026-10-21)
 
 ### Added

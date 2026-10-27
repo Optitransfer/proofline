@@ -9,10 +9,11 @@ import { buildReceipt } from '../src/receipt.mjs';
 import { connectClaudeCode, hookStop } from '../src/hook-stop.mjs';
 import * as G from '../src/guided.mjs';
 import * as S from '../src/signature.mjs';
+import * as D from '../src/decompose.mjs';
 
 const argv = process.argv.slice(2);
 const flags = {}; const pos = [];
-const SWITCHES = ['fresh']; // never take a value: `verify --fresh T` keeps T as the task
+const SWITCHES = ['fresh', 'check', 'lint-warn']; // never take a value: `verify --fresh T` keeps T as the task
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a.startsWith('--')) { const [k, v] = a.slice(2).split('='); if (v !== undefined) flags[k] = v; else if (!SWITCHES.includes(k) && argv[i + 1] && !argv[i + 1].startsWith('--')) flags[k] = argv[++i]; else flags[k] = true; }
@@ -57,6 +58,9 @@ const HELP = `proofline: independent V&V and delivery controller
                                         append tasks and new owner rules; prints the sha256
   contract coverage <REQUIREMENTS.md> [--contracts a.json,b.json]
                                         one line per requirement id, or MISSING
+  contract decompose <scope.json> [--out proposal.json] [--against a.json,b.json] [--check] [--lint-warn]
+                                        scope file to an unsigned proposal for merge; never writes
+                                        proofline.json or a .sig; --check exits 1 when --out differs
   contract validate | show              validate also warns when a grep already matches on the base revision
   next [--owner <name>] [--base <rev>]  the single next task with its full brief (marks it active);
                                         --owner limits the lane; --base re-pins the base
@@ -90,6 +94,7 @@ const ACCEPTED_FLAGS = {
   'contract create': ['from', 'id', 'title', 'phase', 'owner', 'description', 'depends', 'scope'],
   'contract merge': ['owners'],
   'contract coverage': ['contracts'],
+  'contract decompose': ['out', 'against', 'check', 'lint-warn'],
   'contract scaffold': ['title', 'scope', 'kind', 'id'],
   'contract approve': [],
   'contract sign': [],
@@ -174,6 +179,21 @@ try {
         const out = P.C.coverageReport(root, path.resolve(root, req), { contracts: contracts.map((f) => path.resolve(root, f)) });
         print(out, out.lines.join('\n'));
         process.exitCode = out.ok ? 0 : 1;
+      } else if (sub === 'decompose') {
+        const scope = pos[2];
+        if (!scope) throw new Error('contract decompose needs a scope file');
+        if (flags.out === true) throw new Error('--out needs a file');
+        if (flags.against === true) throw new Error('--against needs a contract file');
+        const against = flags.against ? String(flags.against).split(',').map((s) => s.trim()).filter(Boolean).map((f) => path.resolve(root, f)) : [];
+        const out = flags.out ? path.resolve(root, String(flags.out)) : undefined;
+        const r = D.decomposeFile(root, path.resolve(root, scope), { out, against, check: flags.check === true, lint: flags['lint-warn'] === true ? 'warn' : 'error' });
+        for (const w of r.warnings) console.error(`warning: ${w}`);
+        const summary = { sha256: r.sha256, tasks: r.ids, out: out ? path.relative(root, out) : null, same: r.same };
+        if (flags.check === true) {
+          if (r.same) print(summary, `${r.sha256}\n${summary.out} is current`);
+          else { print(summary, `${summary.out} differs from the scope; regenerate it with: proofline contract decompose ${scope} --out ${summary.out}${flags.against ? ` --against ${flags.against}` : ''}`); process.exitCode = 1; }
+        } else if (!out) { if (json) print({ ...summary, proposal: r.proposal }); else process.stdout.write(r.bytes); }
+        else print(summary, `${r.sha256}\nwrote ${summary.out}: ${r.ids.join(', ')}`);
       } else if (sub === 'scaffold') {
         if (typeof flags.title !== 'string') throw new Error('scaffold needs --title');
         if (typeof flags.scope !== 'string') throw new Error('scaffold needs --scope');

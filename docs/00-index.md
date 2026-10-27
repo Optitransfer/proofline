@@ -21,6 +21,7 @@ This is the source of truth for the Proofline design. Requirements are normative
 - [12 — Roadmap](12-roadmap.md)
 - [13 — Interdependencies](13-interdependencies.md)
 - [14 — Metrics and evaluation](14-metrics.md)
+- [Decomposition: from a scope file to a signed contract](DECOMPOSITION.md)
 
 ## Decisions and examples
 
