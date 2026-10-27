@@ -1,0 +1,187 @@
+{
+  "schema": "proofline/1",
+  "status": "proposed",
+  "about": "Toy decomposition of example-project: a greeting library with a CLI and its docs.",
+  "proposed_by": "OWNER",
+  "target": "proofline.json tasks[]",
+  "owner_rules": [
+    "Each task closes only on the evidence its criteria name."
+  ],
+  "tasks": [
+    {
+      "id": "EX-01",
+      "title": "Greeting function",
+      "phase": "implement",
+      "owner": "OWNER",
+      "depends_on": [],
+      "requirements": [
+        "REQ-GREET",
+        "REQ-QUALITY"
+      ],
+      "description": "greet(name) returns a greeting. An empty name is refused.",
+      "estimate_days": 1,
+      "scope": {
+        "allow": [
+          "src/**",
+          "test/**"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "EX-01-AC01",
+          "mandatory": true,
+          "statement": "The new test fails on the base and passes now",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/greet.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "EX-01-AC02",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 120
+          }
+        },
+        {
+          "id": "EX-01-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "EX-01-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass, STOP and report what blocks it, what was tried and what is needed."
+      ]
+    },
+    {
+      "id": "EX-02",
+      "title": "Command-line entry point",
+      "phase": "implement",
+      "owner": "OWNER",
+      "depends_on": [
+        "EX-01"
+      ],
+      "requirements": [
+        "REQ-CLI",
+        "REQ-QUALITY"
+      ],
+      "description": "A bin script prints greet(argv[2]).",
+      "estimate_days": 2,
+      "scope": {
+        "allow": [
+          "bin/**",
+          "test/**"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "EX-02-AC01",
+          "mandatory": true,
+          "statement": "The CLI is wired to greet",
+          "verifier": {
+            "type": "wiring",
+            "entry": "bin/greet.mjs",
+            "symbol": "greet"
+          }
+        },
+        {
+          "id": "EX-02-AC02",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test"
+          }
+        },
+        {
+          "id": "EX-02-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "EX-02-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass, STOP and report what blocks it, what was tried and what is needed."
+      ]
+    },
+    {
+      "id": "EX-DOCS",
+      "title": "Usage documented",
+      "phase": "verify",
+      "owner": "OWNER",
+      "depends_on": [
+        "EX-02"
+      ],
+      "requirements": [
+        "REQ-DOCS",
+        "REQ-QUALITY"
+      ],
+      "description": "",
+      "estimate_days": 1,
+      "scope": {
+        "allow": [
+          "README.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "EX-DOCS-USAGE",
+          "mandatory": true,
+          "statement": "README names the command",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "greet <name>",
+            "must": "present"
+          }
+        },
+        {
+          "id": "EX-DOCS-AC02",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "EX-DOCS-AC03",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass, STOP and report what blocks it, what was tried and what is needed.",
+        "Docs describe what the code does today, nothing planned."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "schema": "proofline-scope/1",
+  "prefix": "EX",
+  "pad": 2,
+  "proposal": {
+    "about": "Toy decomposition of example-project: a greeting library with a CLI and its docs.",
+    "proposed_by": "OWNER",
+    "target": "proofline.json tasks[]"
+  },
+  "owner_rules": [
+    "Each task closes only on the evidence its criteria name."
+  ],
+  "defaults": {
+    "phase": "implement",
+    "owner": "OWNER",
+    "scope": ["src/**", "test/**"],
+    "fields": { "estimate_days": 1 }
+  },
+  "prepend": {
+    "stop_rules": ["If a criterion cannot pass, STOP and report what blocks it, what was tried and what is needed."]
+  },
+  "append": {
+    "requirements": ["REQ-QUALITY"],
+    "criteria": ["scope", "pushed"]
+  },
+  "tasks": [
+    {
+      "n": 1,
+      "title": "Greeting function",
+      "requirements": ["REQ-GREET"],
+      "description": ["greet(name) returns a greeting.", "An empty name is refused."],
+      "acceptance": [
+        { "statement": "The new test fails on the base and passes now", "verifier": { "type": "test_red_green", "test_file": "test/greet.test.mjs", "cmd": "node --test {test}" } },
+        { "statement": "suite green", "cmd": "npm test", "expect_exit": 0, "timeout_s": 120 }
+      ]
+    },
+    {
+      "n": 2,
+      "title": "Command-line entry point",
+      "depends_on": [1],
+      "requirements": ["REQ-CLI"],
+      "description": "A bin script prints greet(argv[2]).",
+      "scope": ["bin/**", "test/**"],
+      "acceptance": [
+        { "statement": "The CLI is wired to greet", "verifier": { "type": "wiring", "entry": "bin/greet.mjs", "symbol": "greet" } },
+        { "statement": "suite green", "cmd": "npm test" }
+      ],
+      "fields": { "estimate_days": 2 }
+    },
+    {
+      "id": "EX-DOCS",
+      "title": "Usage documented",
+      "phase": "verify",
+      "depends_on": ["EX-02"],
+      "requirements": ["REQ-DOCS"],
+      "scope": ["README.md"],
+      "acceptance": [
+        { "id": "{task}-USAGE", "statement": "README names the command", "verifier": { "type": "grep", "file": "README.md", "pattern": "greet <name>", "must": "present" } }
+      ],
+      "stop_rules": ["Docs describe what the code does today, nothing planned."]
+    }
+  ]
+}

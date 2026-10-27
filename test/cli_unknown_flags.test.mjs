@@ -15,6 +15,7 @@ const COMMANDS = [
   ['contract', 'create'],
   ['contract', 'merge'],
   ['contract', 'coverage'],
+  ['contract', 'decompose'],
   ['contract', 'scaffold'],
   ['contract', 'approve'],
   ['contract', 'sign'],
